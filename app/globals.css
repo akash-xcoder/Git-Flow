@@ -1,0 +1,270 @@
+@import "tailwindcss";
+@config "../tailwind.config.ts";
+
+:root {
+  --u: min(calc(100vw / 1280), calc(100dvh / 760));
+
+  --ink: #ffffff;
+  --ink-muted: #ededed;
+  --panel: #181818;
+  --white-btn: #fdfdfd;
+  --btn-ink: #050505;
+  --glass-fill: rgba(0, 0, 0, 0.78);
+  --glass-line: rgba(255, 255, 255, 0.09);
+
+  --dx: 8.5;
+  --dy: 13.1;
+
+  --e-reveal: cubic-bezier(0.16, 1, 0.3, 1);
+  --e-soft: cubic-bezier(0.25, 0.8, 0.3, 1);
+}
+
+@supports not (height: 100dvh) {
+  :root {
+    --u: min(calc(100vw / 1280), calc(100vh / 760));
+  }
+}
+
+@media (max-width: 1160px) {
+  :root {
+    --u: min(
+      max(0.9px, min(calc(100vw / 1280), calc(100dvh / 760))),
+      calc((100vw - 72px) / 575),
+      calc(100dvh / 620)
+    );
+  }
+}
+
+@media (max-width: 552px) {
+  :root {
+    --u: 1px;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+@layer base {
+  html,
+  body {
+    @apply bg-black text-white m-0 p-0 overflow-hidden h-full;
+    color: var(--ink);
+    font-family: var(--font-pjs), -apple-system, BlinkMacSystemFont, "Segoe UI",
+      Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: geometricPrecision;
+  }
+}
+
+code,
+pre,
+.font-mono {
+  font-family: var(--font-mono), monospace;
+}
+
+a:focus-visible,
+button:focus-visible,
+input:focus-visible {
+  outline: 2px solid #a78bfa;
+  outline-offset: 3px;
+}
+
+/* Entrance Keyframes */
+@keyframes lineRise {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes subIn {
+  from {
+    opacity: 0;
+    transform: translateY(calc(14 * var(--u)));
+    filter: blur(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    filter: blur(0);
+  }
+}
+
+@keyframes subInFlat {
+  from {
+    opacity: 0;
+    transform: translateY(calc(12 * var(--u)));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes pillIn {
+  from {
+    opacity: 0;
+    transform: translateY(calc(8 * var(--u))) scale(0.972);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes liftIn {
+  from {
+    opacity: 0;
+    transform: translateY(calc(9 * var(--u)));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes logoIn {
+  from {
+    opacity: 0;
+    transform: translateY(calc(-2.4 * var(--u))) translateY(calc(9 * var(--u)));
+  }
+  to {
+    opacity: 1;
+    transform: translateY(calc(-2.4 * var(--u)));
+  }
+}
+
+@keyframes menuIn {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Background video crossfade */
+.bg-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 51% 8%;
+  display: block;
+  background-color: #000000;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.9s linear;
+}
+
+.bg-video.is-active {
+  opacity: 1;
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+/* Electric glowing edge animation */
+.electric-edge path {
+  stroke: #00f3ff !important;
+  stroke-width: 2.5 !important;
+  stroke-dasharray: 10 15;
+  filter: drop-shadow(0 0 4px #00f3ff) drop-shadow(0 0 8px #00f3ff);
+  animation: electric-flow 0.8s linear infinite;
+}
+
+@keyframes electric-flow {
+  from {
+    stroke-dashoffset: 25;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* Ensure React Flow canvas and background are strictly transparent over the video */
+.react-flow,
+.react-flow__renderer,
+.react-flow__pane,
+.react-flow__background {
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
+/* React Flow Dark Controls Polish */
+.react-flow__controls {
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.8) !important;
+}
+
+.react-flow__controls-button {
+  background-color: #111827 !important;
+  border-bottom: 1px solid #1f2937 !important;
+  fill: #e5e7eb !important;
+  color: #e5e7eb !important;
+  transition: background-color 150ms ease, fill 150ms ease !important;
+}
+
+.react-flow__controls-button:hover {
+  background-color: #1f2937 !important;
+  fill: #00f3ff !important;
+}
+
+.react-flow__minimap {
+  background-color: #030712 !important;
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+.react-flow__minimap-svg {
+  background-color: #030712 !important;
+}
+
+.react-flow__attribution {
+  background: rgba(5, 5, 5, 0.7) !important;
+  color: #4b5563 !important;
+}
+
+/* Group Node Container */
+.react-flow__node-group {
+  background-color: rgba(20, 25, 30, 0.4);
+  border: 1px solid #334155;
+  border-radius: 8px;
+  padding: 20px;
+}
+
+/* Group Node Label */
+.react-flow__node-group .react-flow__node-label {
+  color: #94a3b8;
+  font-family: var(--font-mono), monospace;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 10px;
+}
+
+/* Nuke all React Flow backgrounds, including dark mode variables */
+.react-flow, 
+.react-flow.dark,
+.react-flow__renderer,
+.react-flow__pane,
+.react-flow__background {
+  background: transparent !important;
+  background-color: transparent !important;
+  --xy-background-color: transparent !important;
+}
+
+

@@ -1,0 +1,6 @@
+{
+  "name": "RepoFlow Visualizer",
+  "description": "Interactive dark-mode GitHub repository and CI/CD pipeline architecture visualizer powered by React Flow with electric neon data flow edges.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
