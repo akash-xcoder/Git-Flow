@@ -4,6 +4,7 @@ import { useMemo, useState, useCallback, useRef, useEffect } from "react";
 import ReactFlow, {
   Background,
   Controls,
+  ControlButton,
   MiniMap,
   useNodesState,
   useEdgesState,
@@ -25,11 +26,17 @@ import {
   Network,
   Sparkles,
   ChevronLeft,
+  Download,
+  ImageDown,
+  FileCode,
+  ChevronDown,
+  Check,
 } from "lucide-react";
 import CustomNode from "@/components/CustomNode";
 import GroupNode from "@/components/GroupNode";
 import NodeInspectorPanel from "@/components/NodeInspectorPanel";
 import { getLayoutedElements } from "@/utils/layout";
+import { exportReactFlowAsImage } from "@/utils/react-flow-export";
 import {
   initialNodes,
   initialEdges,
@@ -73,13 +80,68 @@ export default function RepoFlowApp() {
     files: string[];
   } | null>(null);
   const [showFilesDrawer, setShowFilesDrawer] = useState(false);
+  const [isExporting, setIsExporting] = useState<"png" | "svg" | null>(null);
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const [exportSuccessMessage, setExportSuccessMessage] = useState<string | null>(null);
 
   const rfInstanceRef = useRef<ReactFlowInstance | null>(null);
   const burgerRef = useRef<HTMLButtonElement | null>(null);
   const menuRef = useRef<HTMLElement | null>(null);
   const heroInputRef = useRef<HTMLInputElement | null>(null);
+  const exportMenuRef = useRef<HTMLDivElement | null>(null);
 
   const nodeTypes = useMemo(() => STATIC_NODE_TYPES, []);
+
+  // Close export menu on outside click or Escape
+  useEffect(() => {
+    if (!exportMenuOpen) return;
+    const handleDocClick = (e: MouseEvent) => {
+      const target = e.target as globalThis.Node;
+      if (exportMenuRef.current && !exportMenuRef.current.contains(target)) {
+        setExportMenuOpen(false);
+      }
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setExportMenuOpen(false);
+    };
+    document.addEventListener("click", handleDocClick);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("click", handleDocClick);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [exportMenuOpen]);
+
+  const handleExport = useCallback(
+    async (format: "png" | "svg") => {
+      setIsExporting(format);
+      setExportMenuOpen(false);
+      try {
+        const parsed = parseGitHubRepoUrl(repoInput);
+        const fileName =
+          parsed.valid && parsed.repo
+            ? `${parsed.owner}-${parsed.repo}-architecture`
+            : "repoflow-architecture";
+        await exportReactFlowAsImage({
+          nodes,
+          format,
+          fileName,
+          pixelRatio: format === "png" ? 2 : 1,
+          backgroundColor: "#050508",
+        });
+        setExportSuccessMessage(`Exported ${format.toUpperCase()} image`);
+        setTimeout(() => setExportSuccessMessage(null), 3200);
+      } catch (err: unknown) {
+        console.error("Export error:", err);
+        setUrlError(
+          err instanceof Error ? err.message : "Failed to export canvas image."
+        );
+      } finally {
+        setIsExporting(null);
+      }
+    },
+    [nodes, repoInput]
+  );
 
   // Mobile menu outside-click and Escape handler
   useEffect(() => {
@@ -814,6 +876,73 @@ export default function RepoFlowApp() {
                 </button>
               </form>
 
+              {/* Canvas Image Export Button Group */}
+              <div className="relative" ref={exportMenuRef}>
+                <div className="flex items-center p-0.5 bg-white/5 border border-white/10 rounded-full hover:border-[#00f3ff]/50 transition-colors">
+                  <button
+                    type="button"
+                    onClick={() => handleExport("png")}
+                    disabled={Boolean(isExporting)}
+                    title="Export canvas as high-quality PNG (2x)"
+                    className="px-3 py-1 text-xs font-mono text-gray-200 hover:text-white rounded-full transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  >
+                    {isExporting ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-[#00f3ff]" />
+                    ) : (
+                      <Download className="w-3.5 h-3.5 text-[#00f3ff]" />
+                    )}
+                    <span>{isExporting ? `Exporting ${isExporting.toUpperCase()}...` : "Export"}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setExportMenuOpen((prev) => !prev)}
+                    disabled={Boolean(isExporting)}
+                    aria-label="Export format options"
+                    aria-expanded={exportMenuOpen}
+                    className="pr-2 pl-1 py-1 text-gray-400 hover:text-white rounded-full transition-colors cursor-pointer"
+                  >
+                    <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${exportMenuOpen ? "rotate-180" : ""}`} />
+                  </button>
+                </div>
+
+                {exportMenuOpen && (
+                  <div className="absolute right-0 top-full mt-1.5 w-52 bg-gray-950/95 border border-white/15 rounded-2xl p-1.5 shadow-2xl z-50 backdrop-blur-2xl animate-menuIn">
+                    <button
+                      type="button"
+                      onClick={() => handleExport("png")}
+                      className="w-full text-left px-3 py-2 text-xs font-mono text-gray-200 hover:bg-white/10 hover:text-white rounded-xl flex items-center gap-2.5 transition-colors cursor-pointer"
+                    >
+                      <ImageDown className="w-4 h-4 text-[#00f3ff] shrink-0" />
+                      <div>
+                        <div className="font-semibold text-white">PNG Image (2x)</div>
+                        <div className="text-[10px] text-gray-400">High-res raster for docs</div>
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleExport("svg")}
+                      className="w-full text-left px-3 py-2 text-xs font-mono text-gray-200 hover:bg-white/10 hover:text-white rounded-xl flex items-center gap-2.5 transition-colors cursor-pointer"
+                    >
+                      <FileCode className="w-4 h-4 text-purple-400 shrink-0" />
+                      <div>
+                        <div className="font-semibold text-white">SVG Vector</div>
+                        <div className="text-[10px] text-gray-400">Resolution-independent</div>
+                      </div>
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {exportSuccessMessage && (
+                <div
+                  role="status"
+                  className="flex items-center gap-1.5 px-3 py-1 bg-[#00f3ff]/15 border border-[#00f3ff]/40 text-[#00f3ff] rounded-full text-xs font-mono animate-fadeIn"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  <span>{exportSuccessMessage}</span>
+                </div>
+              )}
+
               <div
                 aria-label="Pipeline Telemetry"
                 className="hidden xl:flex items-center gap-2 text-xs text-gray-300 font-mono tabular-nums"
@@ -912,7 +1041,19 @@ export default function RepoFlowApp() {
                 <Controls
                   position="top-left"
                   className="bg-gray-900/90 border border-white/10 fill-white text-white shadow-lg"
-                />
+                >
+                  <ControlButton
+                    onClick={() => handleExport("png")}
+                    title="Export canvas as high-quality PNG"
+                    aria-label="Export canvas as image"
+                  >
+                    {isExporting ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-[#00f3ff]" />
+                    ) : (
+                      <Download className="w-3.5 h-3.5 text-[#00f3ff]" />
+                    )}
+                  </ControlButton>
+                </Controls>
                 <MiniMap
                   nodeColor="#00f3ff"
                   maskColor="rgba(5, 5, 5, 0.78)"
