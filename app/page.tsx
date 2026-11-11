@@ -612,40 +612,39 @@ export default function RepoFlowApp() {
 
         {/* Hero Foreground Content (Visible when isVisualizerActive is false) */}
         <div
-          className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 min-[553px]:translate-x-[calc(var(--dx)*var(--u))] min-[553px]:translate-y-[calc(var(--dy)*var(--u))] w-max max-w-[calc(100vw-40px)] text-center z-20 transition-all duration-700 ease-in-out ${
+          className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-[min(90vw,780px)] px-4 flex flex-col items-center justify-center text-center z-20 transition-all duration-700 ease-in-out ${
             isVisualizerActive
               ? "opacity-0 scale-95 pointer-events-none"
               : "opacity-100 scale-100 pointer-events-auto"
           }`}
         >
           {/* Two-line masked entrance headline */}
-          <h1 className="m-0 font-medium text-[min(72px,calc((100vw-44px)/6.9))] min-[553px]:text-[calc(89*var(--u))] leading-[1.04] min-[553px]:leading-[calc(90*var(--u))] tracking-[-0.02em] min-[553px]:tracking-[calc(-1*var(--u))] text-[var(--ink)]">
+          <h1 className="m-0 font-medium text-[min(64px,calc((100vw-44px)/6.9))] min-[553px]:text-[calc(80*var(--u))] leading-[1.08] min-[553px]:leading-[calc(86*var(--u))] tracking-[-0.02em] min-[553px]:tracking-[calc(-1*var(--u))] text-[var(--ink)] text-center w-full">
             <span className="block overflow-hidden pt-[0.26em] -mt-[0.26em]">
-              <span className="block will-change-transform animate-lineRise [animation-delay:0.12s]">
+              <span className="block will-change-transform animate-lineRise [animation-delay:0.12s] text-center">
                 Visualize Codebases
               </span>
             </span>
             <span className="block overflow-hidden pt-[0.26em] -mt-[0.26em]">
-              <span className="block will-change-transform animate-lineRise [animation-delay:0.22s]">
+              <span className="block will-change-transform animate-lineRise [animation-delay:0.22s] text-center">
                 Instantly
               </span>
             </span>
           </h1>
 
           {/* Subtitle */}
-          <p className="mt-4 min-[553px]:mt-[calc(16.1*var(--u))] mb-0 mx-auto max-w-[46ch] min-[553px]:max-w-[58ch] font-light text-[max(16px,calc(17.4*var(--u)))] leading-[max(25px,calc(27*var(--u)))] tracking-[calc(-0.30*var(--u))] text-[#f6f6f6] will-change-[transform,opacity] animate-subIn [animation-delay:0.58s]">
+          <p className="mt-4 min-[553px]:mt-[calc(18*var(--u))] mb-0 mx-auto max-w-[48ch] font-light text-[max(15px,calc(17*var(--u)))] leading-[max(24px,calc(26*var(--u)))] tracking-[calc(-0.25*var(--u))] text-[#f6f6f6] text-center will-change-[transform,opacity] animate-subIn [animation-delay:0.58s]">
             Drop a GitHub link to instantly map architecture, dependencies,
-            <br className="hidden min-[553px]:inline" /> and CI/CD pipelines
-            using Gemini AI.
+            <br className="hidden sm:inline" /> and CI/CD pipelines using Gemini AI.
           </p>
 
           {/* Sleek Glassmorphism URL Input & "Visualize" CTA */}
           <form
             onSubmit={handleLoadRepo}
-            className="mt-6 min-[553px]:mt-[calc(21.8*var(--u))] flex flex-wrap items-center justify-center gap-[max(10px,calc(7*var(--u)))] min-[553px]:-translate-x-[calc(0.75*var(--u))]"
+            className="mt-6 min-[553px]:mt-[calc(24*var(--u))] flex flex-col sm:flex-row items-center justify-center gap-3 w-full max-w-xl mx-auto"
           >
-            <div className="relative flex items-center bg-[var(--glass-fill)] border border-[var(--glass-line)] hover:border-white/20 focus-within:border-white/35 backdrop-blur-md rounded-[max(22px,calc(19.5*var(--u)))] h-[max(44px,calc(39*var(--u)))] px-[max(16px,calc(16*var(--u)))] w-[min(88vw,360px)] min-[1161px]:w-[calc(390*var(--u))] transition-colors duration-180 animate-pillInCta [animation-delay:0.90s]">
-              <GitBranch className="w-[max(14px,calc(13.5*var(--u)))] h-[max(14px,calc(13.5*var(--u)))] text-white/55 shrink-0 mr-[max(8px,calc(8*var(--u)))]" />
+            <div className="relative flex items-center bg-[var(--glass-fill)] border border-[var(--glass-line)] hover:border-white/20 focus-within:border-white/35 backdrop-blur-md rounded-full h-[max(44px,calc(42*var(--u)))] px-4 w-full sm:w-[380px] min-[1161px]:w-[calc(400*var(--u))] transition-colors duration-180 animate-pillInCta [animation-delay:0.90s]">
+              <GitBranch className="w-4 h-4 text-white/55 shrink-0 mr-2.5" />
               <label htmlFor="hero-github-url" className="sr-only">
                 GitHub Repository URL
               </label>
@@ -660,24 +659,24 @@ export default function RepoFlowApp() {
                   if (urlError) setUrlError(null);
                 }}
                 placeholder="https://github.com/vercel/next.js"
-                className="w-full bg-transparent border-0 text-[#f6f6f6] placeholder:text-white/40 text-[max(13px,calc(12.5*var(--u)))] font-mono focus:outline-none"
+                className="w-full bg-transparent border-0 text-[#f6f6f6] placeholder:text-white/40 text-sm font-mono focus:outline-none"
               />
             </div>
 
             <button
               type="submit"
               disabled={Boolean(loadingStage)}
-              className="inline-flex items-center justify-center h-[max(44px,calc(39*var(--u)))] rounded-[max(22px,calc(19.5*var(--u)))] bg-[var(--white-btn)] hover:bg-white text-[var(--btn-ink)] pl-[max(21px,calc(18.2*var(--u)))] pr-[max(22px,calc(19.2*var(--u)))] text-[max(15px,calc(13.3*var(--u)))] font-medium tracking-[calc(-0.3*var(--u))] gap-[max(10px,calc(9*var(--u)))] border-0 cursor-pointer transition-all duration-180 animate-pillInCta [animation-delay:0.97s]"
+              className="inline-flex items-center justify-center h-[max(44px,calc(42*var(--u)))] rounded-full bg-[var(--white-btn)] hover:bg-white text-[var(--btn-ink)] px-6 text-sm font-medium tracking-tight gap-2.5 border-0 cursor-pointer transition-all duration-180 animate-pillInCta [animation-delay:0.97s] whitespace-nowrap shrink-0 shadow-lg"
             >
               {loadingStage ? (
                 <>
-                  <Loader2 className="w-[max(14px,calc(13*var(--u)))] h-[max(14px,calc(13*var(--u)))] animate-spin" />
+                  <Loader2 className="w-4 h-4 animate-spin" />
                   <span>Mapping...</span>
                 </>
               ) : (
                 <>
                   <span>Visualize</span>
-                  <ArrowRight className="w-[max(14px,calc(13*var(--u)))] h-[max(11.6px,calc(10.8*var(--u)))] shrink-0" />
+                  <ArrowRight className="w-4 h-4 shrink-0" />
                 </>
               )}
             </button>
@@ -686,7 +685,7 @@ export default function RepoFlowApp() {
           {urlError && !isVisualizerActive && (
             <p
               role="alert"
-              className="mt-3 text-xs font-mono text-red-400 bg-black/80 border border-red-500/30 rounded-full px-4 py-1 inline-block"
+              className="mt-4 text-xs font-mono text-red-400 bg-black/80 border border-red-500/30 rounded-full px-4 py-1.5 inline-block mx-auto"
             >
               {urlError}
             </p>
