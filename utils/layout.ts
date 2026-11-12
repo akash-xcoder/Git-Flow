@@ -1,6 +1,7 @@
 import dagre from "dagre";
 import { Node, Edge, Position } from "reactflow";
 import type { CustomNodeData } from "@/lib/repo-graph";
+import { snapEdgesToNearestConnectionPoints } from "@/src/utils/edge-snapping";
 
 // Enable compound graphs for parent/child groups
 const dagreGraph = new dagre.graphlib.Graph({ compound: true });
@@ -119,10 +120,15 @@ export const getLayoutedElements = <T = CustomNodeData>(
     ...mappedNodes.filter((n) => n.type !== "group"),
   ];
 
-  const layoutedEdges: Edge[] = edges.map((edge) => ({
+  const rawEdges: Edge[] = edges.map((edge) => ({
     ...edge,
     type: edge.type || "smoothstep",
   }));
+
+  const { updatedEdges: layoutedEdges } = snapEdgesToNearestConnectionPoints(
+    rawEdges,
+    layoutedNodes as Node[]
+  );
 
   return { nodes: layoutedNodes, edges: layoutedEdges };
 };

@@ -31,12 +31,18 @@ import {
   FileCode,
   ChevronDown,
   Check,
+  Github,
+  Search,
 } from "lucide-react";
 import CustomNode from "@/components/CustomNode";
 import GroupNode from "@/components/GroupNode";
 import NodeInspectorPanel from "@/components/NodeInspectorPanel";
 import { getLayoutedElements } from "@/utils/layout";
 import { exportReactFlowAsImage } from "@/utils/react-flow-export";
+import {
+  snapEdgesToNearestConnectionPoints,
+  getNearestConnectionHandles,
+} from "@/src/utils/edge-snapping";
 import {
   initialNodes,
   initialEdges,
@@ -56,6 +62,55 @@ const BG_VIDEO_URL =
   "https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260912_104036_bd6924f6-3c8e-417e-8465-6d03c8c2e9e6.mp4";
 const BG_POSTER_URL =
   "https://d2ol7oe51mr4n9.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/82e7eb75-c65f-490a-99b5-f3d1cad54200.webp";
+
+const DEFAULT_REPO_FILES: string[] = [
+  "package.json",
+  "next.config.ts",
+  "tsconfig.json",
+  "tailwind.config.ts",
+  "README.md",
+  "Dockerfile",
+  "docker-compose.yml",
+  ".github/workflows/ci.yml",
+  ".github/workflows/deploy.yml",
+  "src/app/layout.tsx",
+  "src/app/page.tsx",
+  "src/app/globals.css",
+  "src/app/api/generate/route.ts",
+  "src/app/api/github/route.ts",
+  "src/components/CustomNode.tsx",
+  "src/components/GroupNode.tsx",
+  "src/components/NodeInspectorPanel.tsx",
+  "src/lib/repo-graph.ts",
+  "src/utils/layout.ts",
+  "src/utils/react-flow-export.ts",
+  "docs/architecture.md",
+  "docs/pipeline-guide.md",
+  "tests/topology.test.ts",
+  "tests/export.test.ts",
+];
+
+function renderHighlightedFilePath(filePath: string, query: string) {
+  const trimmed = query.trim().toLowerCase();
+  if (!trimmed) return filePath;
+  const lowerPath = filePath.toLowerCase();
+  const matchIndex = lowerPath.indexOf(trimmed);
+  if (matchIndex === -1) return filePath;
+
+  const before = filePath.slice(0, matchIndex);
+  const matched = filePath.slice(matchIndex, matchIndex + trimmed.length);
+  const after = filePath.slice(matchIndex + trimmed.length);
+
+  return (
+    <>
+      {before}
+      <span className="bg-[#00f3ff]/25 text-[#00f3ff] font-semibold rounded-xs px-0.5">
+        {matched}
+      </span>
+      {after}
+    </>
+  );
+}
 
 export default function RepoFlowApp() {
   const [nodes, setNodes, onNodesChange] =
@@ -78,11 +133,27 @@ export default function RepoFlowApp() {
     repo: string;
     defaultBranch: string;
     files: string[];
-  } | null>(null);
+  }>({
+    owner: "vercel",
+    repo: "next.js",
+    defaultBranch: "canary",
+    files: DEFAULT_REPO_FILES,
+  });
   const [showFilesDrawer, setShowFilesDrawer] = useState(false);
+  const [fileSearchQuery, setFileSearchQuery] = useState("");
+  const [copiedFilePath, setCopiedFilePath] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState<"png" | "svg" | null>(null);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [exportSuccessMessage, setExportSuccessMessage] = useState<string | null>(null);
+
+  const filteredFiles = useMemo(() => {
+    if (!scannedRepoInfo?.files) return [];
+    const query = fileSearchQuery.trim().toLowerCase();
+    if (!query) return scannedRepoInfo.files;
+    return scannedRepoInfo.files.filter((filePath) =>
+      filePath.toLowerCase().includes(query)
+    );
+  }, [scannedRepoInfo, fileSearchQuery]);
 
   const rfInstanceRef = useRef<ReactFlowInstance | null>(null);
   const burgerRef = useRef<HTMLButtonElement | null>(null);
@@ -177,7 +248,8 @@ export default function RepoFlowApp() {
   const triggerFitView = useCallback(() => {
     setTimeout(() => {
       rfInstanceRef.current?.fitView({
-        padding: 0.24,
+        padding: 0.2,
+        minZoom: 0.02,
         maxZoom: 1.1,
         duration: 300,
       });
@@ -196,22 +268,79 @@ export default function RepoFlowApp() {
     [nodes, edges, setNodes, setEdges, triggerFitView]
   );
 
-  // Connect two handles with an electric glowing smoothstep edge
+  // Connect two handles with an electric glowing smoothstep edge and nearest handle fallback
   const onConnect = useCallback(
     (connection: Connection | Edge) => {
-      setEdges((eds) =>
-        addEdge(
-          {
-            ...connection,
-            type: "smoothstep",
-            animated: true,
-            className: "electric-edge",
-          },
-          eds
-        )
-      );
+      let sourceHandle = connection.sourceHandle;
+      let targetHandle = connection.targetHandle;
+
+      if ((!sourceHandle || !targetHandle) && connection.source && connection.target) {
+        const sourceNode = nodes.find((n) => n.id === connection.source);
+        const targetNode = nodes.find((n) => n.id === connection.target);
+        if (sourceNode && targetNode) {
+          const nodesMap = new Map(nodes.map((n) => [n.id, n]));
+          const nearest = getNearestConnectionHandles(sourceNode, targetNode, nodesMap);
+          sourceHandle = sourceHandle || nearest.sourceHandle;
+          targetHandle = targetHandle || nearest.targetHandle;
+        }
+      }
+
+      if (connection.source && connection.target) {
+        const edgeToAdd: Edge = {
+          id: `edge-${connection.source}-${connection.target}-${Date.now()}`,
+          source: connection.source,
+          target: connection.target,
+          sourceHandle: sourceHandle || undefined,
+          targetHandle: targetHandle || undefined,
+          type: "smoothstep",
+          animated: true,
+          className: "electric-edge",
+        };
+        setEdges((eds) => addEdge(edgeToAdd, eds));
+      }
     },
-    [setEdges]
+    [nodes, setEdges]
+  );
+
+  // Dynamic edge snapping as nodes are dragged across the canvas
+  const onNodeDrag = useCallback(
+    (_event: React.MouseEvent, node?: Node, updatedNodes?: Node[]) => {
+      if (!node?.id) return;
+      const currentNodes =
+        Array.isArray(updatedNodes) && updatedNodes.length > 0
+          ? updatedNodes
+          : nodes.map((n) => (n && n.id === node.id ? node : n));
+
+      const { updatedEdges, hasChanges } = snapEdgesToNearestConnectionPoints(
+        edges,
+        currentNodes,
+        node.id
+      );
+      if (hasChanges) {
+        setEdges(updatedEdges);
+      }
+    },
+    [nodes, edges, setEdges]
+  );
+
+  const onNodeDragStop = useCallback(
+    (_event: React.MouseEvent, node?: Node, updatedNodes?: Node[]) => {
+      if (!node?.id) return;
+      const currentNodes =
+        Array.isArray(updatedNodes) && updatedNodes.length > 0
+          ? updatedNodes
+          : nodes.map((n) => (n && n.id === node.id ? node : n));
+
+      const { updatedEdges, hasChanges } = snapEdgesToNearestConnectionPoints(
+        edges,
+        currentNodes,
+        node.id
+      );
+      if (hasChanges) {
+        setEdges(updatedEdges);
+      }
+    },
+    [nodes, edges, setEdges]
   );
 
   const selectedNode = useMemo(() => {
@@ -557,6 +686,19 @@ export default function RepoFlowApp() {
 
           {/* Right Actions (Desktop >= 1160px) */}
           <div className="hidden min-[1161px]:flex ml-auto items-center gap-[calc(6.8*var(--u))]">
+            {/* GitHub Repo Link */}
+            <a
+              href="https://github.com/akash-xcoder/Git-Flow"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="View Git-Flow on GitHub"
+              title="GitHub: akash-xcoder/Git-Flow"
+              className="inline-flex items-center justify-center h-[calc(28*var(--u))] px-[calc(11.5*var(--u))] rounded-[calc(14*var(--u))] bg-[var(--panel)] text-[#e8e8e8] hover:bg-[#232323] hover:text-white text-[calc(11.5*var(--u))] font-medium tracking-[calc(-0.15*var(--u))] gap-[calc(6*var(--u))] transition-colors duration-180 no-underline cursor-pointer"
+            >
+              <Github className="w-[calc(13*var(--u))] h-[calc(13*var(--u))] shrink-0" />
+              <span>GitHub</span>
+            </a>
+
             {isVisualizerActive ? (
               <>
                 <button
@@ -654,7 +796,30 @@ export default function RepoFlowApp() {
             >
               Hero View
             </button>
+            <button
+              type="button"
+              onClick={() => {
+                setIsVisualizerActive(true);
+                setShowFilesDrawer(true);
+                setMobileMenuOpen(false);
+              }}
+              className="text-left text-[var(--ink-muted)] hover:bg-white/6 hover:text-white text-[15px] font-medium p-[12px_14px] rounded-xl transition-colors flex items-center justify-between"
+            >
+              <span>Repository Files</span>
+              <span className="text-xs font-mono text-[#00f3ff] bg-[#00f3ff]/10 px-2 py-0.5 rounded-full">
+                {scannedRepoInfo.files.length}
+              </span>
+            </button>
             <div className="h-px bg-white/8 my-2 mx-3.5" />
+            <a
+              href="https://github.com/akash-xcoder/Git-Flow"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2.5 text-[var(--ink-muted)] hover:bg-white/6 hover:text-white text-[15px] font-medium p-[12px_14px] rounded-xl transition-colors no-underline"
+            >
+              <Github className="w-4 h-4 text-white shrink-0" />
+              <span>GitHub: akash-xcoder/Git-Flow</span>
+            </a>
             <button
               type="button"
               onClick={() => {
@@ -749,6 +914,18 @@ export default function RepoFlowApp() {
               {urlError}
             </p>
           )}
+
+          {/* GitHub Repository link */}
+          <a
+            href="https://github.com/akash-xcoder/Git-Flow"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-5 inline-flex items-center gap-2 text-xs font-mono text-white/70 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/25 rounded-full px-4 py-2 transition-all duration-180 animate-subIn [animation-delay:1.05s] no-underline group shadow-sm"
+          >
+            <Github className="w-4 h-4 text-white/80 group-hover:text-white transition-colors" />
+            <span>GitHub: akash-xcoder/Git-Flow</span>
+            <ArrowRight className="w-3 h-3 text-white/40 group-hover:text-white group-hover:translate-x-0.5 transition-all" />
+          </a>
         </div>
 
         {/* Transparent React Flow Visualizer Section (Visible when isVisualizerActive is true) */}
@@ -805,7 +982,12 @@ export default function RepoFlowApp() {
                 <button
                   type="button"
                   onClick={() => setShowFilesDrawer((prev) => !prev)}
-                  className="px-3 py-1.5 bg-white/5 border border-white/10 hover:border-[#00f3ff] text-xs font-mono tabular-nums text-gray-200 hover:text-white rounded-full transition-colors whitespace-nowrap shrink-0 flex items-center gap-1.5 cursor-pointer"
+                  className={`px-3 py-1.5 border text-xs font-mono tabular-nums rounded-full transition-colors whitespace-nowrap shrink-0 flex items-center gap-1.5 cursor-pointer ${
+                    showFilesDrawer
+                      ? "bg-[#00f3ff]/15 border-[#00f3ff] text-white shadow-[0_0_12px_rgba(0,243,255,0.2)]"
+                      : "bg-white/5 border-white/10 hover:border-[#00f3ff] text-gray-200 hover:text-white"
+                  }`}
+                  title={showFilesDrawer ? "Close repository files drawer" : "Open repository files drawer"}
                 >
                   <FolderTree className="w-3.5 h-3.5 text-[#00f3ff]" />
                   <span>{scannedRepoInfo.files.length} Files</span>
@@ -933,6 +1115,18 @@ export default function RepoFlowApp() {
                 )}
               </div>
 
+              {/* GitHub Link in canvas bar */}
+              <a
+                href="https://github.com/akash-xcoder/Git-Flow"
+                target="_blank"
+                rel="noopener noreferrer"
+                title="View Git-Flow on GitHub"
+                className="hidden md:inline-flex items-center gap-1.5 px-3 py-1 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 text-xs font-mono text-gray-300 hover:text-white rounded-full transition-colors no-underline cursor-pointer"
+              >
+                <Github className="w-3.5 h-3.5 text-white" />
+                <span>GitHub</span>
+              </a>
+
               {exportSuccessMessage && (
                 <div
                   role="status"
@@ -969,38 +1163,135 @@ export default function RepoFlowApp() {
             {showFilesDrawer && scannedRepoInfo && (
               <aside
                 aria-label="Extracted Repository File Tree"
-                className="w-72 bg-black/60 backdrop-blur-xl border-r border-white/10 p-4 flex flex-col z-20 shrink-0 overflow-hidden"
+                className="w-80 bg-black/80 backdrop-blur-2xl border-r border-white/10 p-4 flex flex-col z-20 shrink-0 overflow-hidden shadow-2xl transition-all"
               >
-                <div className="flex items-center justify-between border-b border-white/10 pb-3 mb-3">
-                  <div>
-                    <h2 className="text-xs font-semibold text-white font-mono">
-                      {scannedRepoInfo.owner}/{scannedRepoInfo.repo}
-                    </h2>
+                {/* Drawer Header */}
+                <div className="flex items-center justify-between border-b border-white/10 pb-3 mb-3 shrink-0">
+                  <div className="truncate pr-2">
+                    <div className="flex items-center gap-1.5">
+                      <FolderTree className="w-3.5 h-3.5 text-[#00f3ff] shrink-0" />
+                      <h2 className="text-xs font-semibold text-white font-mono truncate">
+                        {scannedRepoInfo.owner}/{scannedRepoInfo.repo}
+                      </h2>
+                    </div>
                     <p className="text-[11px] text-gray-400 font-mono tabular-nums mt-0.5">
                       branch: {scannedRepoInfo.defaultBranch} ·{" "}
-                      {scannedRepoInfo.files.length} files
+                      {scannedRepoInfo.files.length} total files
                     </p>
                   </div>
                   <button
                     type="button"
                     onClick={() => setShowFilesDrawer(false)}
                     aria-label="Close File Tree"
-                    className="p-1 text-gray-400 hover:text-white rounded hover:bg-white/10"
+                    className="p-1.5 text-gray-400 hover:text-white rounded-lg hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
                   >
                     <X className="w-4 h-4" />
                   </button>
                 </div>
-                <ul className="flex-1 overflow-y-auto space-y-1 pr-1 font-mono text-[11px] text-gray-300">
-                  {scannedRepoInfo.files.map((filePath) => (
-                    <li
-                      key={filePath}
-                      className="truncate py-1 px-2 rounded hover:bg-white/10 hover:text-[#00f3ff] transition-colors"
-                      title={filePath}
+
+                {/* File Search Input Bar */}
+                <div className="relative mb-3 shrink-0">
+                  <label htmlFor="repo-file-search-input" className="sr-only">
+                    Filter repository files by name
+                  </label>
+                  <div className="relative flex items-center">
+                    <Search className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    <input
+                      id="repo-file-search-input"
+                      type="text"
+                      value={fileSearchQuery}
+                      onChange={(e) => setFileSearchQuery(e.target.value)}
+                      placeholder="Filter files (e.g. .tsx, api)..."
+                      className="w-full pl-8 pr-7 py-1.5 bg-white/5 border border-white/10 rounded-lg text-xs font-mono text-white placeholder:text-gray-500 focus:outline-none focus:border-[#00f3ff] focus:ring-1 focus:ring-[#00f3ff]/40 transition-colors"
+                    />
+                    {fileSearchQuery && (
+                      <button
+                        type="button"
+                        onClick={() => setFileSearchQuery("")}
+                        aria-label="Clear file search"
+                        className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 text-gray-400 hover:text-white rounded hover:bg-white/10 transition-colors cursor-pointer"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Match count and filter status */}
+                  <div className="flex items-center justify-between text-[10px] font-mono mt-1.5 px-0.5 text-gray-400">
+                    <span>
+                      {fileSearchQuery ? (
+                        <>
+                          <span className="text-[#00f3ff] font-semibold">{filteredFiles.length}</span>{" "}
+                          {filteredFiles.length === 1 ? "file match" : "files match"}
+                        </>
+                      ) : (
+                        <span>Showing all {filteredFiles.length} files</span>
+                      )}
+                    </span>
+                    {fileSearchQuery && (
+                      <button
+                        type="button"
+                        onClick={() => setFileSearchQuery("")}
+                        className="text-gray-400 hover:text-white underline cursor-pointer"
+                      >
+                        Reset
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* File List or Empty State */}
+                {filteredFiles.length > 0 ? (
+                  <ul className="flex-1 overflow-y-auto space-y-0.5 pr-1 font-mono text-[11px] text-gray-300">
+                    {filteredFiles.map((filePath) => (
+                      <li
+                        key={filePath}
+                        className="group flex items-center justify-between py-1.5 px-2 rounded-lg hover:bg-white/10 hover:text-[#00f3ff] transition-colors cursor-pointer select-none"
+                        title={`Click to copy: ${filePath}`}
+                        onClick={() => {
+                          if (typeof navigator !== "undefined" && navigator.clipboard) {
+                            navigator.clipboard.writeText(filePath);
+                            setCopiedFilePath(filePath);
+                            setTimeout(
+                              () =>
+                                setCopiedFilePath((prev) =>
+                                  prev === filePath ? null : prev
+                                ),
+                              1800
+                            );
+                          }
+                        }}
+                      >
+                        <span className="truncate flex items-center gap-1.5 flex-1 pr-1">
+                          <FileCode className="w-3 h-3 text-gray-400 group-hover:text-[#00f3ff] shrink-0" />
+                          <span className="truncate">
+                            {renderHighlightedFilePath(filePath, fileSearchQuery)}
+                          </span>
+                        </span>
+                        {copiedFilePath === filePath ? (
+                          <span className="text-[10px] text-[#00f3ff] font-sans font-medium shrink-0 pl-1">
+                            Copied!
+                          </span>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div className="flex-1 flex flex-col items-center justify-center p-4 text-center text-gray-400">
+                    <Search className="w-6 h-6 text-gray-600 mb-2" />
+                    <p className="text-xs font-mono text-gray-300">No matching files</p>
+                    <p className="text-[11px] font-mono text-gray-500 mt-0.5 break-all">
+                      No files match &quot;{fileSearchQuery}&quot;
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setFileSearchQuery("")}
+                      className="mt-3 px-3 py-1 bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-mono text-gray-300 hover:text-white rounded-lg transition-colors cursor-pointer"
                     >
-                      {filePath}
-                    </li>
-                  ))}
-                </ul>
+                      Clear search query
+                    </button>
+                  </div>
+                )}
               </aside>
             )}
 
@@ -1011,6 +1302,11 @@ export default function RepoFlowApp() {
                 onNodesChange={onNodesChange}
                 onEdgesChange={onEdgesChange}
                 onConnect={onConnect}
+                onNodeDrag={onNodeDrag}
+                onNodeDragStop={onNodeDragStop}
+                snapToGrid={true}
+                snapGrid={[16, 16]}
+                connectionRadius={30}
                 onInit={(instance) => {
                   rfInstanceRef.current = instance;
                 }}
@@ -1024,8 +1320,10 @@ export default function RepoFlowApp() {
                 }}
                 onPaneClick={() => setSelectedNodeId(null)}
                 nodeTypes={nodeTypes}
+                minZoom={0.02}
+                maxZoom={2.5}
                 fitView
-                fitViewOptions={{ padding: 0.25, maxZoom: 1.1 }}
+                fitViewOptions={{ padding: 0.2, minZoom: 0.02, maxZoom: 1.1 }}
                 className="dark bg-transparent"
                 style={{
                   background: "transparent",

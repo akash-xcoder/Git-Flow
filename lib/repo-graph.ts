@@ -22,6 +22,8 @@ export interface FlowEdgeItem {
   id: string;
   source: string;
   target: string;
+  sourceHandle?: string;
+  targetHandle?: string;
   type: "smoothstep";
   animated: boolean;
   className: string;
@@ -76,6 +78,8 @@ export const initialEdges: FlowEdgeItem[] = [
     id: "edge-1",
     source: "node-1",
     target: "node-2",
+    sourceHandle: "source-right",
+    targetHandle: "target-left",
     type: "smoothstep",
     animated: true,
     className: "electric-edge",
@@ -858,6 +862,8 @@ export function createDownstreamNode(
         id: `edge-${anchor.id}-${newId}`,
         source: anchor.id,
         target: newId,
+        sourceHandle: "source-right",
+        targetHandle: "target-left",
         type: "smoothstep",
         animated: true,
         className: "electric-edge",

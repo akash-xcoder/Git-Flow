@@ -56,7 +56,7 @@ export function computeExportDimensions(
     bounds,
     width,
     height,
-    0.1,
+    0.02,
     2.5,
     padding
   );

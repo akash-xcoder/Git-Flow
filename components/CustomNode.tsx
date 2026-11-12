@@ -20,17 +20,65 @@ export default function CustomNode({
 
   return (
     <div
-      className={`px-5 py-3 rounded-lg bg-gray-950 border shadow-lg text-white font-mono text-sm hover:border-[#00f3ff] hover:shadow-[0_0_15px_rgba(0,243,255,0.3)] transition-all duration-300 min-w-[220px] max-w-[260px] ${
+      className={`px-5 py-3 rounded-lg bg-gray-950 border shadow-lg text-white font-mono text-sm hover:border-[#00f3ff] hover:shadow-[0_0_15px_rgba(0,243,255,0.3)] transition-all duration-300 min-w-[220px] max-w-[260px] relative ${
         selected
           ? "border-[#00f3ff] shadow-[0_0_18px_rgba(0,243,255,0.35)]"
           : "border-gray-700"
       }`}
     >
+      {/* 4-Directional Snapping Connection Points (Top, Right, Bottom, Left) */}
       <Handle
         type="target"
-        position={targetPosition}
-        className="w-2 h-2 bg-[#00f3ff] border-none"
+        position={Position.Top}
+        id="target-top"
+        className="!w-2.5 !h-2.5 !bg-[#00f3ff] !border-2 !border-gray-950 transition-all hover:!scale-150 hover:!shadow-[0_0_8px_#00f3ff]"
       />
+      <Handle
+        type="source"
+        position={Position.Top}
+        id="source-top"
+        className="!w-2.5 !h-2.5 !bg-[#00f3ff] !border-2 !border-gray-950 transition-all hover:!scale-150 hover:!shadow-[0_0_8px_#00f3ff]"
+      />
+
+      <Handle
+        type="target"
+        position={Position.Right}
+        id="target-right"
+        className="!w-2.5 !h-2.5 !bg-[#00f3ff] !border-2 !border-gray-950 transition-all hover:!scale-150 hover:!shadow-[0_0_8px_#00f3ff]"
+      />
+      <Handle
+        type="source"
+        position={Position.Right}
+        id="source-right"
+        className="!w-2.5 !h-2.5 !bg-[#00f3ff] !border-2 !border-gray-950 transition-all hover:!scale-150 hover:!shadow-[0_0_8px_#00f3ff]"
+      />
+
+      <Handle
+        type="target"
+        position={Position.Bottom}
+        id="target-bottom"
+        className="!w-2.5 !h-2.5 !bg-[#00f3ff] !border-2 !border-gray-950 transition-all hover:!scale-150 hover:!shadow-[0_0_8px_#00f3ff]"
+      />
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        id="source-bottom"
+        className="!w-2.5 !h-2.5 !bg-[#00f3ff] !border-2 !border-gray-950 transition-all hover:!scale-150 hover:!shadow-[0_0_8px_#00f3ff]"
+      />
+
+      <Handle
+        type="target"
+        position={Position.Left}
+        id="target-left"
+        className="!w-2.5 !h-2.5 !bg-[#00f3ff] !border-2 !border-gray-950 transition-all hover:!scale-150 hover:!shadow-[0_0_8px_#00f3ff]"
+      />
+      <Handle
+        type="source"
+        position={Position.Left}
+        id="source-left"
+        className="!w-2.5 !h-2.5 !bg-[#00f3ff] !border-2 !border-gray-950 transition-all hover:!scale-150 hover:!shadow-[0_0_8px_#00f3ff]"
+      />
+
       <div className="font-semibold tracking-tight text-white truncate" title={primaryTitle}>
         {primaryTitle}
       </div>
@@ -51,11 +99,6 @@ export default function CustomNode({
           {typeof data.latencyMs === "number" && <span>{data.latencyMs}ms</span>}
         </div>
       )}
-      <Handle
-        type="source"
-        position={sourcePosition}
-        className="w-2 h-2 bg-[#00f3ff] border-none"
-      />
     </div>
   );
 }
