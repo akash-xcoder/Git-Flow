@@ -37,6 +37,7 @@ import {
 import CustomNode from "@/components/CustomNode";
 import GroupNode from "@/components/GroupNode";
 import NodeInspectorPanel from "@/components/NodeInspectorPanel";
+import ContextMenu from "@/components/ContextMenu";
 import { getLayoutedElements } from "@/utils/layout";
 import { exportReactFlowAsImage } from "@/utils/react-flow-export";
 import {
@@ -45,6 +46,10 @@ import {
 } from "@/src/utils/edge-snapping";
 import { getNodeCategoryStyle } from "@/src/utils/node-category-styles";
 import { resolveNodeCollisions } from "@/src/utils/node-collision";
+import {
+  clampContextMenuPosition,
+  type ContextMenuState,
+} from "@/src/utils/context-menu-utils";
 import {
   initialNodes,
   initialEdges,
@@ -147,6 +152,13 @@ export default function RepoFlowApp() {
   const [isExporting, setIsExporting] = useState<"png" | "svg" | null>(null);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [exportSuccessMessage, setExportSuccessMessage] = useState<string | null>(null);
+  const [menu, setMenu] = useState<ContextMenuState>({
+    show: false,
+    x: 0,
+    y: 0,
+    id: "",
+    type: "node",
+  });
 
   const filteredFiles = useMemo(() => {
     if (!scannedRepoInfo?.files) return [];
@@ -158,6 +170,7 @@ export default function RepoFlowApp() {
   }, [scannedRepoInfo, fileSearchQuery]);
 
   const rfInstanceRef = useRef<ReactFlowInstance | null>(null);
+  const canvasWrapperRef = useRef<HTMLDivElement | null>(null);
   const burgerRef = useRef<HTMLButtonElement | null>(null);
   const menuRef = useRef<HTMLElement | null>(null);
   const heroInputRef = useRef<HTMLInputElement | null>(null);
@@ -381,6 +394,53 @@ export default function RepoFlowApp() {
       }
     },
     [snapForDraggedNodes]
+  );
+
+  const onNodeContextMenu = useCallback(
+    (event: React.MouseEvent, node: Node<CustomNodeData>) => {
+      event.preventDefault();
+      if (node.type === "group") return;
+      const bounds = canvasWrapperRef.current?.getBoundingClientRect();
+      const rawX = bounds ? event.clientX - bounds.left : event.clientX;
+      const rawY = bounds ? event.clientY - bounds.top : event.clientY;
+      const { x, y } = clampContextMenuPosition(
+        rawX,
+        rawY,
+        bounds?.width ?? 1200,
+        bounds?.height ?? 800
+      );
+      setMenu({
+        show: true,
+        x,
+        y,
+        id: node.id,
+        type: "node",
+      });
+    },
+    []
+  );
+
+  const onEdgeContextMenu = useCallback(
+    (event: React.MouseEvent, edge: Edge) => {
+      event.preventDefault();
+      const bounds = canvasWrapperRef.current?.getBoundingClientRect();
+      const rawX = bounds ? event.clientX - bounds.left : event.clientX;
+      const rawY = bounds ? event.clientY - bounds.top : event.clientY;
+      const { x, y } = clampContextMenuPosition(
+        rawX,
+        rawY,
+        bounds?.width ?? 1200,
+        bounds?.height ?? 800
+      );
+      setMenu({
+        show: true,
+        x,
+        y,
+        id: edge.id,
+        type: "edge",
+      });
+    },
+    []
   );
 
   const selectedNode = useMemo(() => {
@@ -1335,7 +1395,10 @@ export default function RepoFlowApp() {
               </aside>
             )}
 
-            <div className="flex-1 w-full h-full relative z-10">
+            <div
+              ref={canvasWrapperRef}
+              className="flex-1 w-full h-full relative z-10"
+            >
               <ReactFlow
                 nodes={nodes}
                 edges={edges}
@@ -1346,6 +1409,8 @@ export default function RepoFlowApp() {
                 onNodeDragStop={onNodeDragStop}
                 onSelectionDrag={onSelectionDrag}
                 onSelectionDragStop={onSelectionDragStop}
+                onNodeContextMenu={onNodeContextMenu}
+                onEdgeContextMenu={onEdgeContextMenu}
                 snapToGrid={true}
                 snapGrid={[16, 16]}
                 connectionRadius={30}
@@ -1356,11 +1421,15 @@ export default function RepoFlowApp() {
                   _: React.MouseEvent,
                   node: Node<CustomNodeData>
                 ) => {
+                  setMenu((prev) => (prev.show ? { ...prev, show: false } : prev));
                   if (node.type !== "group") {
                     setSelectedNodeId(node.id);
                   }
                 }}
-                onPaneClick={() => setSelectedNodeId(null)}
+                onPaneClick={() => {
+                  setSelectedNodeId(null);
+                  setMenu((prev) => (prev.show ? { ...prev, show: false } : prev));
+                }}
                 nodeTypes={nodeTypes}
                 minZoom={0.02}
                 maxZoom={2.5}
@@ -1398,17 +1467,32 @@ export default function RepoFlowApp() {
                   nodeColor={(node) => {
                     if (node.type === "group") return "rgba(51, 65, 85, 0.35)";
                     const nodeData = node.data as CustomNodeData | undefined;
+                    if (nodeData?.color) return nodeData.color;
                     return getNodeCategoryStyle(nodeData?.category).borderHex;
                   }}
                   maskColor="rgba(5, 5, 5, 0.78)"
                   nodeStrokeColor={(node) => {
                     if (node.type === "group") return "#475569";
                     const nodeData = node.data as CustomNodeData | undefined;
+                    if (nodeData?.color) return nodeData.color;
                     return getNodeCategoryStyle(nodeData?.category).borderHex;
                   }}
                   className="bg-gray-950/90 border border-white/10"
                 />
               </ReactFlow>
+
+              <ContextMenu
+                menu={menu}
+                nodes={nodes}
+                edges={edges}
+                repoUrl={repoInput}
+                defaultBranch={scannedRepoInfo?.defaultBranch || "main"}
+                setNodes={setNodes}
+                setEdges={setEdges}
+                onClose={() =>
+                  setMenu((prev) => (prev.show ? { ...prev, show: false } : prev))
+                }
+              />
             </div>
 
             <NodeInspectorPanel

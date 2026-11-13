@@ -180,7 +180,7 @@ input:focus-visible {
 
 /* Electric glowing edge animation */
 .electric-edge path {
-  stroke: #00f3ff !important;
+  stroke: #00f3ff;
   stroke-width: 2.5 !important;
   stroke-dasharray: 10 15;
   filter: drop-shadow(0 0 4px #00f3ff) drop-shadow(0 0 8px #00f3ff);

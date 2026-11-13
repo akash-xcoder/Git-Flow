@@ -29,6 +29,8 @@ export interface CustomNodeData {
   label: string;
   category?: NodeCategory;
   sublabel?: string;
+  filePath?: string;
+  color?: string;
   latencyMs?: number;
   status?: "nominal" | "warning" | "Running";
 }
@@ -52,6 +54,7 @@ export interface FlowEdgeItem {
   type: "smoothstep";
   animated: boolean;
   className: string;
+  style?: Record<string, string | number>;
 }
 
 export type TopologyPreset = "starter" | "nextjs-edge" | "microservices" | "security-gate";
@@ -228,6 +231,14 @@ export function normalizeGeneratedGraph(raw: unknown): {
         typeof dataObj.latencyMs === "number" && Number.isFinite(dataObj.latencyMs)
           ? dataObj.latencyMs
           : undefined;
+      const filePath =
+        typeof dataObj.filePath === "string" && dataObj.filePath.trim()
+          ? dataObj.filePath.trim()
+          : undefined;
+      const color =
+        typeof dataObj.color === "string" && dataObj.color.trim()
+          ? dataObj.color.trim()
+          : undefined;
 
       return {
         id,
@@ -237,6 +248,8 @@ export function normalizeGeneratedGraph(raw: unknown): {
         data: {
           label,
           sublabel,
+          ...(filePath ? { filePath } : {}),
+          ...(color ? { color } : {}),
           category,
           latencyMs,
           status: "nominal",
@@ -530,6 +543,7 @@ export function deriveArchitectureFromFiles(
         label: `${shortName} ${purpose}`,
         category,
         sublabel: filePath,
+        filePath,
         latencyMs: 15 + ((idx * 7) % 35),
         status: "nominal",
       },

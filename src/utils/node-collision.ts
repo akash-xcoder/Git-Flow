@@ -44,7 +44,7 @@ export function resolveNodeCollisions(
   }
 
   let hasChanges = false;
-  const padding = 24; // Minimum separation gap between nodes
+  const padding = 32; // Separation gap between nodes and group containers
 
   // Iterate a few times to resolve cascading collisions
   for (let iteration = 0; iteration < 3; iteration++) {
@@ -52,18 +52,20 @@ export function resolveNodeCollisions(
 
     for (const draggedId of draggedSet) {
       const draggedNode = nodeMap.get(draggedId);
-      if (!draggedNode || draggedNode.type === "group") continue;
+      if (!draggedNode) continue;
 
       const dDim = getNodeDimensions(draggedNode);
       const dx = draggedNode.position.x;
       const dy = draggedNode.position.y;
 
       for (const other of mutableNodes) {
-        if (other.id === draggedId || draggedSet.has(other.id) || other.type === "group") {
+        if (other.id === draggedId || draggedSet.has(other.id)) {
           continue;
         }
-        // Skip if they have different parent nodes (unless both are root)
-        if (draggedNode.parentNode !== other.parentNode) continue;
+        // Skip if they have different parent nodes (unless both are top-level root containers)
+        if ((draggedNode.parentNode || undefined) !== (other.parentNode || undefined)) {
+          continue;
+        }
 
         const oDim = getNodeDimensions(other);
         const ox = other.position.x;
