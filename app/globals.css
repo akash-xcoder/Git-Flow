@@ -178,13 +178,34 @@ input:focus-visible {
   }
 }
 
-/* Electric glowing edge animation */
-.electric-edge path {
+/* Electric glowing edge animation (scoped strictly to the visible edge path) */
+.react-flow__edge.electric-edge path.react-flow__edge-path {
   stroke: #00f3ff;
   stroke-width: 2.5 !important;
   stroke-dasharray: 10 15;
   filter: drop-shadow(0 0 4px #00f3ff) drop-shadow(0 0 8px #00f3ff);
   animation: electric-flow 0.8s linear infinite;
+  transition: stroke-width 150ms ease;
+}
+
+/* Wide invisible hit-target path (path:nth-of-type(2)) for effortless edge selection & right-clicking */
+.react-flow__edge path.react-flow__edge-interaction,
+.react-flow__edge.electric-edge path.react-flow__edge-interaction {
+  stroke: transparent !important;
+  stroke-width: 32px !important;
+  stroke-dasharray: none !important;
+  filter: none !important;
+  animation: none !important;
+  pointer-events: stroke !important;
+  cursor: pointer;
+}
+
+.react-flow__edge.electric-edge:hover path.react-flow__edge-path,
+.react-flow__edge.electric-edge.selected path.react-flow__edge-path,
+.react-flow__edge.electric-edge:focus path.react-flow__edge-path,
+.react-flow__edge.electric-edge:focus-visible path.react-flow__edge-path {
+  stroke: #00f3ff;
+  stroke-width: 4 !important;
 }
 
 @keyframes electric-flow {
