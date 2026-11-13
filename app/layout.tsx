@@ -21,18 +21,18 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: "RepoFlow — AI GitHub Repository Visualizer | DarkLine Division",
+  title: "GitFlow — AI GitHub Repository Visualizer | DarkLine Division",
   description:
     "Drop a GitHub link to instantly map architecture, dependencies, and CI/CD pipelines using Gemini AI.",
   openGraph: {
-    title: "RepoFlow — AI GitHub Repository Visualizer | DarkLine Division",
+    title: "GitFlow — AI GitHub Repository Visualizer | DarkLine Division",
     description:
       "Drop a GitHub link to instantly map architecture, dependencies, and CI/CD pipelines using Gemini AI.",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "RepoFlow — AI GitHub Repository Visualizer | DarkLine Division",
+    title: "GitFlow — AI GitHub Repository Visualizer | DarkLine Division",
     description:
       "Drop a GitHub link to instantly map architecture, dependencies, and CI/CD pipelines using Gemini AI.",
   },

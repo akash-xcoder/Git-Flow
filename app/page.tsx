@@ -716,13 +716,13 @@ export default function RepoFlowApp() {
       <div className="relative z-10 w-full h-full flex flex-col bg-transparent">
         {/* Top Navigation Bar (Reference-pixel scaled with --u) */}
         <header className="relative h-[max(56px,calc(67*var(--u)))] flex items-center pl-[max(20px,calc(24.5*var(--u)))] pr-[max(20px,calc(50.7*var(--u)))] z-30 shrink-0 bg-transparent">
-          {/* Brand Logo: RepoFlow */}
+          {/* Brand Logo: GitFlow */}
           <button
             type="button"
             onClick={() => setIsVisualizerActive(false)}
             className="font-extrabold text-[max(22px,calc(26*var(--u)))] tracking-[calc(0.45*var(--u))] leading-none text-[var(--ink)] no-underline whitespace-nowrap bg-transparent border-0 cursor-pointer flex items-baseline animate-logoIn [animation-delay:0.46s]"
           >
-            <span>RepoFlow</span>
+            <span>GitFlow</span>
           </button>
 
           {/* Center Navigation Links (Desktop >= 1160px) */}
