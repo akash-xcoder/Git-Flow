@@ -43,6 +43,8 @@ import {
   snapEdgesToNearestConnectionPoints,
   getNearestConnectionHandles,
 } from "@/src/utils/edge-snapping";
+import { getNodeCategoryStyle } from "@/src/utils/node-category-styles";
+import { resolveNodeCollisions } from "@/src/utils/node-collision";
 import {
   initialNodes,
   initialEdges,
@@ -302,45 +304,83 @@ export default function RepoFlowApp() {
     [nodes, setEdges]
   );
 
+  const snapForDraggedNodes = useCallback(
+    (draggedList: Node[]) => {
+      if (!Array.isArray(draggedList) || draggedList.length === 0) return;
+
+      const draggedById = new Map<string, Node>();
+      for (const dn of draggedList) {
+        if (dn?.id) draggedById.set(dn.id, dn);
+      }
+      if (draggedById.size === 0) return;
+
+      // Merge updated positions of dragged nodes with the full nodes array
+      const mergedNodes = nodes.map((n) => (n?.id ? draggedById.get(n.id) ?? n : n));
+      const draggedIds = new Set(draggedById.keys());
+
+      // Prevent node collisions and intersections (non-collidable nodes)
+      const { nodes: collisionResolvedNodes, hasChanges: collisionChanged } =
+        resolveNodeCollisions(mergedNodes, draggedIds);
+
+      if (collisionChanged) {
+        setNodes(collisionResolvedNodes);
+      }
+
+      setEdges((prevEdges) => {
+        const { updatedEdges, hasChanges } = snapEdgesToNearestConnectionPoints(
+          prevEdges,
+          collisionResolvedNodes,
+          draggedIds
+        );
+        return hasChanges ? updatedEdges : prevEdges;
+      });
+    },
+    [nodes, setNodes, setEdges]
+  );
+
   // Dynamic edge snapping as nodes are dragged across the canvas
   const onNodeDrag = useCallback(
-    (_event: React.MouseEvent, node?: Node, updatedNodes?: Node[]) => {
-      if (!node?.id) return;
-      const currentNodes =
-        Array.isArray(updatedNodes) && updatedNodes.length > 0
-          ? updatedNodes
-          : nodes.map((n) => (n && n.id === node.id ? node : n));
-
-      const { updatedEdges, hasChanges } = snapEdgesToNearestConnectionPoints(
-        edges,
-        currentNodes,
-        node.id
-      );
-      if (hasChanges) {
-        setEdges(updatedEdges);
-      }
+    (_event: React.MouseEvent, node?: Node, draggedNodes?: Node[]) => {
+      const list =
+        Array.isArray(draggedNodes) && draggedNodes.length > 0
+          ? draggedNodes
+          : node?.id
+          ? [node]
+          : [];
+      snapForDraggedNodes(list);
     },
-    [nodes, edges, setEdges]
+    [snapForDraggedNodes]
   );
 
   const onNodeDragStop = useCallback(
-    (_event: React.MouseEvent, node?: Node, updatedNodes?: Node[]) => {
-      if (!node?.id) return;
-      const currentNodes =
-        Array.isArray(updatedNodes) && updatedNodes.length > 0
-          ? updatedNodes
-          : nodes.map((n) => (n && n.id === node.id ? node : n));
+    (_event: React.MouseEvent, node?: Node, draggedNodes?: Node[]) => {
+      const list =
+        Array.isArray(draggedNodes) && draggedNodes.length > 0
+          ? draggedNodes
+          : node?.id
+          ? [node]
+          : [];
+      snapForDraggedNodes(list);
+    },
+    [snapForDraggedNodes]
+  );
 
-      const { updatedEdges, hasChanges } = snapEdgesToNearestConnectionPoints(
-        edges,
-        currentNodes,
-        node.id
-      );
-      if (hasChanges) {
-        setEdges(updatedEdges);
+  const onSelectionDrag = useCallback(
+    (_event: React.MouseEvent, selectedNodes?: Node[]) => {
+      if (Array.isArray(selectedNodes) && selectedNodes.length > 0) {
+        snapForDraggedNodes(selectedNodes);
       }
     },
-    [nodes, edges, setEdges]
+    [snapForDraggedNodes]
+  );
+
+  const onSelectionDragStop = useCallback(
+    (_event: React.MouseEvent, selectedNodes?: Node[]) => {
+      if (Array.isArray(selectedNodes) && selectedNodes.length > 0) {
+        snapForDraggedNodes(selectedNodes);
+      }
+    },
+    [snapForDraggedNodes]
   );
 
   const selectedNode = useMemo(() => {
@@ -938,15 +978,15 @@ export default function RepoFlowApp() {
           }`}
         >
           {/* Glassmorphic Workspace Control Bar */}
-          <div className="border-y border-white/10 bg-black/40 backdrop-blur-md px-6 py-2.5 flex flex-wrap items-center justify-between gap-4 z-20 shrink-0">
+          <div className="border-y border-white/10 bg-black/40 backdrop-blur-md px-5 py-2.5 flex flex-wrap items-center justify-between gap-3 z-20 shrink-0">
             <form
               onSubmit={handleLoadRepo}
-              className="flex items-center gap-2 flex-1 max-w-2xl"
+              className="flex flex-wrap sm:flex-nowrap items-center gap-2 flex-1 min-w-fit max-w-2xl"
             >
               <label htmlFor="github-repo-url" className="sr-only">
                 GitHub Repository URL
               </label>
-              <div className="relative flex-1">
+              <div className="relative flex-1 min-w-[180px]">
                 <GitBranch className="w-3.5 h-3.5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
                   id="github-repo-url"
@@ -1003,7 +1043,7 @@ export default function RepoFlowApp() {
               )}
             </form>
 
-            <div className="flex items-center gap-4">
+            <div className="flex flex-wrap items-center gap-2.5">
               <div
                 role="group"
                 aria-label="Dagre Layout Direction"
@@ -1304,6 +1344,8 @@ export default function RepoFlowApp() {
                 onConnect={onConnect}
                 onNodeDrag={onNodeDrag}
                 onNodeDragStop={onNodeDragStop}
+                onSelectionDrag={onSelectionDrag}
+                onSelectionDragStop={onSelectionDragStop}
                 snapToGrid={true}
                 snapGrid={[16, 16]}
                 connectionRadius={30}
@@ -1353,9 +1395,17 @@ export default function RepoFlowApp() {
                   </ControlButton>
                 </Controls>
                 <MiniMap
-                  nodeColor="#00f3ff"
+                  nodeColor={(node) => {
+                    if (node.type === "group") return "rgba(51, 65, 85, 0.35)";
+                    const nodeData = node.data as CustomNodeData | undefined;
+                    return getNodeCategoryStyle(nodeData?.category).borderHex;
+                  }}
                   maskColor="rgba(5, 5, 5, 0.78)"
-                  nodeStrokeColor="#00f3ff"
+                  nodeStrokeColor={(node) => {
+                    if (node.type === "group") return "#475569";
+                    const nodeData = node.data as CustomNodeData | undefined;
+                    return getNodeCategoryStyle(nodeData?.category).borderHex;
+                  }}
                   className="bg-gray-950/90 border border-white/10"
                 />
               </ReactFlow>

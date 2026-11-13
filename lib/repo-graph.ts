@@ -1,4 +1,29 @@
-export type NodeCategory = "source" | "pipeline" | "artifact" | "deployment";
+export type NodeCategory =
+  | "api"
+  | "database"
+  | "service"
+  | "source"
+  | "pipeline"
+  | "artifact"
+  | "deployment"
+  | "ui"
+  | "config"
+  | "security"
+  | "testing";
+
+export const VALID_NODE_CATEGORIES: ReadonlySet<NodeCategory> = new Set([
+  "api",
+  "database",
+  "service",
+  "source",
+  "pipeline",
+  "artifact",
+  "deployment",
+  "ui",
+  "config",
+  "security",
+  "testing",
+]);
 
 export interface CustomNodeData {
   label: string;
@@ -191,12 +216,13 @@ export function normalizeGeneratedGraph(raw: unknown): {
         typeof dataObj.sublabel === "string" && dataObj.sublabel.trim()
           ? dataObj.sublabel.trim()
           : undefined;
+      const rawCategory =
+        typeof dataObj.category === "string"
+          ? (dataObj.category.trim().toLowerCase() as NodeCategory)
+          : undefined;
       const category =
-        dataObj.category === "source" ||
-        dataObj.category === "pipeline" ||
-        dataObj.category === "artifact" ||
-        dataObj.category === "deployment"
-          ? dataObj.category
+        rawCategory && VALID_NODE_CATEGORIES.has(rawCategory)
+          ? rawCategory
           : undefined;
       const latencyMs =
         typeof dataObj.latencyMs === "number" && Number.isFinite(dataObj.latencyMs)
@@ -316,7 +342,7 @@ function inferFilePurpose(filePath: string): {
   if (lower.endsWith("package.json") || lower.endsWith("cargo.toml")) {
     return {
       purpose: "(Manifest & dependencies)",
-      category: "source",
+      category: "config",
       groupId: "group-config",
       groupLabel: "Configuration & Manifests",
     };
@@ -324,15 +350,30 @@ function inferFilePurpose(filePath: string): {
   if (lower.includes("next.config") || lower.includes("tsconfig")) {
     return {
       purpose: "(Compiler & build config)",
-      category: "source",
+      category: "config",
       groupId: "group-config",
       groupLabel: "Configuration & Manifests",
+    };
+  }
+  if (
+    lower.includes("prisma") ||
+    lower.includes("drizzle") ||
+    lower.includes("schema") ||
+    lower.includes("/db/") ||
+    lower.includes("/models/") ||
+    lower.endsWith(".sql")
+  ) {
+    return {
+      purpose: "(Database schema & data layer)",
+      category: "database",
+      groupId: "group-database",
+      groupLabel: "Data Persistence & Schemas",
     };
   }
   if (lower.includes("/api/") || lower.endsWith("route.ts") || lower.endsWith("route.js")) {
     return {
       purpose: "(Server API endpoint)",
-      category: "pipeline",
+      category: "api",
       groupId: "group-backend",
       groupLabel: "Backend API & Services",
     };
@@ -340,7 +381,7 @@ function inferFilePurpose(filePath: string): {
   if (lower.endsWith("layout.tsx") || lower.endsWith("layout.js")) {
     return {
       purpose: "(Root application shell)",
-      category: "artifact",
+      category: "ui",
       groupId: "group-frontend",
       groupLabel: "Frontend UI & Routing",
     };
@@ -348,7 +389,7 @@ function inferFilePurpose(filePath: string): {
   if (lower.endsWith("page.tsx") || lower.endsWith("page.js") || lower.endsWith("index.ts")) {
     return {
       purpose: "(View entry & route module)",
-      category: "artifact",
+      category: "ui",
       groupId: "group-frontend",
       groupLabel: "Frontend UI & Routing",
     };
@@ -356,7 +397,7 @@ function inferFilePurpose(filePath: string): {
   if (lower.includes("component") || lower.includes("/ui/")) {
     return {
       purpose: "(UI component module)",
-      category: "artifact",
+      category: "ui",
       groupId: "group-frontend",
       groupLabel: "Frontend UI & Routing",
     };
@@ -364,15 +405,20 @@ function inferFilePurpose(filePath: string): {
   if (lower.includes("test") || lower.includes("spec") || lower.includes("bench")) {
     return {
       purpose: "(Verification & test suite)",
-      category: "deployment",
+      category: "testing",
       groupId: "group-testing",
       groupLabel: "Verification & Tests",
     };
   }
-  if (lower.includes("lib/") || lower.includes("utils/") || lower.includes("scripts/")) {
+  if (
+    lower.includes("service") ||
+    lower.includes("lib/") ||
+    lower.includes("utils/") ||
+    lower.includes("scripts/")
+  ) {
     return {
-      purpose: "(Core logic & utility)",
-      category: "pipeline",
+      purpose: "(Core service & logic)",
+      category: "service",
       groupId: "group-backend",
       groupLabel: "Backend API & Services",
     };
@@ -608,7 +654,7 @@ export function buildRepoTopology(
           position: { x: 400, y: 320 },
           data: {
             label: "Security & SAST Scan",
-            category: "pipeline",
+            category: "security",
             sublabel: "CodeQL · Dependabot",
             latencyMs: 48,
             status: "nominal",

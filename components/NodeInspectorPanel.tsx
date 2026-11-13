@@ -1,7 +1,22 @@
 "use client";
 
 import { useState } from "react";
-import { X, Plus, Trash2, GitBranch, Cpu, Package, Globe } from "lucide-react";
+import {
+  X,
+  Plus,
+  Trash2,
+  GitBranch,
+  Cpu,
+  Package,
+  Globe,
+  Server,
+  Database,
+  Cog,
+  Layout,
+  Settings,
+  Shield,
+  FlaskConical,
+} from "lucide-react";
 import type { CustomNodeData, NodeCategory } from "@/lib/repo-graph";
 
 interface NodeInspectorPanelProps {
@@ -71,12 +86,23 @@ function NodeInspectorForm({
     setDownstreamLabel("");
   };
 
-  const categoryIcon = {
-    source: <GitBranch className="w-4 h-4 text-[#00f3ff]" />,
-    pipeline: <Cpu className="w-4 h-4 text-[#00f3ff]" />,
-    artifact: <Package className="w-4 h-4 text-[#00f3ff]" />,
-    deployment: <Globe className="w-4 h-4 text-[#00f3ff]" />,
-  }[category];
+  const categoryIcon: Record<NodeCategory, React.ReactNode> = {
+    api: <Server className="w-4 h-4 text-cyan-300" />,
+    database: <Database className="w-4 h-4 text-purple-300" />,
+    service: <Cog className="w-4 h-4 text-yellow-300" />,
+    source: <GitBranch className="w-4 h-4 text-emerald-300" />,
+    pipeline: <Cpu className="w-4 h-4 text-indigo-300" />,
+    artifact: <Package className="w-4 h-4 text-rose-300" />,
+    deployment: <Globe className="w-4 h-4 text-blue-300" />,
+    ui: <Layout className="w-4 h-4 text-sky-300" />,
+    config: <Settings className="w-4 h-4 text-slate-300" />,
+    security: <Shield className="w-4 h-4 text-orange-300" />,
+    testing: <FlaskConical className="w-4 h-4 text-lime-300" />,
+  };
+
+  const renderedCategoryIcon = categoryIcon[category] ?? (
+    <Cpu className="w-4 h-4 text-[#00f3ff]" />
+  );
 
   return (
     <aside
@@ -86,7 +112,7 @@ function NodeInspectorForm({
       <div className="space-y-6">
         <div className="flex items-center justify-between border-b border-gray-800 pb-4">
           <div className="flex items-center gap-2">
-            {categoryIcon}
+            {renderedCategoryIcon}
             <h2 className="text-sm font-semibold tracking-tight text-white">
               Node Configuration
             </h2>
@@ -159,10 +185,17 @@ function NodeInspectorForm({
                 onChange={(e) => setCategory(e.target.value as NodeCategory)}
                 className="w-full px-2.5 py-2 bg-gray-900 border border-gray-800 rounded-md text-xs text-white font-mono focus:outline-none focus:border-[#00f3ff]"
               >
+                <option value="api">API</option>
+                <option value="database">Database</option>
+                <option value="service">Service</option>
                 <option value="source">Source</option>
                 <option value="pipeline">Pipeline</option>
                 <option value="artifact">Artifact</option>
                 <option value="deployment">Deployment</option>
+                <option value="ui">UI</option>
+                <option value="config">Config</option>
+                <option value="security">Security</option>
+                <option value="testing">Testing</option>
               </select>
             </div>
 

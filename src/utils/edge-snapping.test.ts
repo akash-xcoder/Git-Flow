@@ -140,3 +140,49 @@ test("snapEdgesToNearestConnectionPoints updates edge handles when dragging a no
   assert.equal(updatedEdges[0].sourceHandle, "source-bottom");
   assert.equal(updatedEdges[0].targetHandle, "target-top");
 });
+
+test("snapEdgesToNearestConnectionPoints snaps child node edges when parent group is dragged", () => {
+  const nodes: Node[] = [
+    {
+      id: "group-1",
+      type: "group",
+      position: { x: 100, y: 400 },
+      style: { width: 400, height: 300 },
+      data: { label: "Cluster" },
+    },
+    {
+      id: "child-1",
+      type: "custom",
+      parentNode: "group-1",
+      position: { x: 20, y: 40 },
+      data: { label: "Worker" },
+    },
+    {
+      id: "node-ext",
+      type: "custom",
+      position: { x: 120, y: 50 },
+      data: { label: "Ingress" },
+    },
+  ];
+
+  const edges: Edge[] = [
+    {
+      id: "e-ext-child",
+      source: "node-ext",
+      target: "child-1",
+      sourceHandle: "source-right",
+      targetHandle: "target-left",
+    },
+  ];
+
+  const { updatedEdges, hasChanges } = snapEdgesToNearestConnectionPoints(
+    edges,
+    nodes,
+    new Set(["group-1"])
+  );
+
+  assert.equal(hasChanges, true);
+  assert.equal(updatedEdges[0].sourceHandle, "source-bottom");
+  assert.equal(updatedEdges[0].targetHandle, "target-top");
+});
+

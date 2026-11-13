@@ -54,12 +54,12 @@ export async function POST(req: Request) {
       1. Create a "group" node for every logical cluster:
          { "id": "group-inference", "type": "group", "data": { "label": "YOLO Inference" } }
       
-      2. Create standard nodes for the actual files, and assign them to a group using 'parentNode':
+      2. Create standard nodes for the actual files, and assign them to a group using 'parentNode', plus semantic 'category' metadata ("api", "database", "service", "ui", "config", "security", "testing", "source", "pipeline", "artifact", or "deployment"):
          { 
            "id": "file-worker-ts", 
            "type": "custom", 
            "parentNode": "group-inference", 
-           "data": { "label": "worker.ts (Inference worker)" } 
+           "data": { "label": "worker.ts (Inference worker)", "category": "service" } 
          }
       
       EDGES ARRAY:

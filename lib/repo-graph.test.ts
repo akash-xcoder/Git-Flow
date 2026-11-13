@@ -133,3 +133,31 @@ test("createDownstreamNode positions node downstream and attaches electric-edge"
   assert.equal(edge?.target, node.id);
   assert.equal(edge?.className, "electric-edge");
 });
+
+test("normalizeGeneratedGraph and deriveArchitectureFromFiles preserve api, database, and service categories", () => {
+  const normalized = normalizeGeneratedGraph({
+    nodes: [
+      { id: "n-api", type: "custom", position: { x: 0, y: 0 }, data: { label: "API Route", category: "API" } },
+      { id: "n-db", type: "custom", position: { x: 200, y: 0 }, data: { label: "Postgres", category: "database" } },
+      { id: "n-svc", type: "custom", position: { x: 400, y: 0 }, data: { label: "Worker", category: "service" } },
+    ],
+    edges: [],
+  });
+
+  assert.equal(normalized.nodes[0].data.category, "api");
+  assert.equal(normalized.nodes[1].data.category, "database");
+  assert.equal(normalized.nodes[2].data.category, "service");
+
+  const derived = deriveArchitectureFromFiles([
+    "app/api/users/route.ts",
+    "prisma/schema.prisma",
+    "lib/auth-service.ts",
+  ]);
+  const apiNode = derived.nodes.find((n) => n.data.sublabel === "app/api/users/route.ts");
+  const dbNode = derived.nodes.find((n) => n.data.sublabel === "prisma/schema.prisma");
+  const svcNode = derived.nodes.find((n) => n.data.sublabel === "lib/auth-service.ts");
+
+  assert.equal(apiNode?.data.category, "api");
+  assert.equal(dbNode?.data.category, "database");
+  assert.equal(svcNode?.data.category, "service");
+});

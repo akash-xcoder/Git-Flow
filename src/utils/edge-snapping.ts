@@ -190,26 +190,49 @@ export function getNearestConnectionHandles(
 export function snapEdgesToNearestConnectionPoints(
   edges: Edge[],
   nodes: Node[],
-  draggedNodeId?: string
+  draggedNodeIds?: string | string[] | Set<string>
 ): { updatedEdges: Edge[]; hasChanges: boolean } {
   if (!Array.isArray(edges) || !Array.isArray(nodes) || edges.length === 0) {
     return { updatedEdges: edges || [], hasChanges: false };
   }
 
-  const nodesMap = new Map<string, Node>(
-    nodes
-      .filter((n): n is Node => Boolean(n && typeof n.id === "string"))
-      .map((n) => [n.id, n])
+  const validNodes = nodes.filter((n): n is Node =>
+    Boolean(n && typeof n.id === "string")
   );
+  const nodesMap = new Map<string, Node>(validNodes.map((n) => [n.id, n]));
+
+  let affectedIds: Set<string> | null = null;
+  if (typeof draggedNodeIds === "string") {
+    affectedIds = new Set([draggedNodeIds]);
+  } else if (Array.isArray(draggedNodeIds) && draggedNodeIds.length > 0) {
+    affectedIds = new Set(draggedNodeIds);
+  } else if (draggedNodeIds instanceof Set && draggedNodeIds.size > 0) {
+    affectedIds = new Set(draggedNodeIds);
+  }
+
+  // If any dragged node is a group, include all its descendant child nodes
+  if (affectedIds) {
+    let added = true;
+    while (added) {
+      added = false;
+      for (const n of validNodes) {
+        if (n.parentNode && affectedIds.has(n.parentNode) && !affectedIds.has(n.id)) {
+          affectedIds.add(n.id);
+          added = true;
+        }
+      }
+    }
+  }
+
   let hasChanges = false;
 
   const updatedEdges = edges.map((edge) => {
     if (!edge || !edge.source || !edge.target) return edge;
-    // If a specific node is being dragged, only evaluate edges attached to it
+    // If specific nodes are being dragged, only evaluate edges attached to them
     if (
-      draggedNodeId &&
-      edge.source !== draggedNodeId &&
-      edge.target !== draggedNodeId
+      affectedIds &&
+      !affectedIds.has(edge.source) &&
+      !affectedIds.has(edge.target)
     ) {
       return edge;
     }
