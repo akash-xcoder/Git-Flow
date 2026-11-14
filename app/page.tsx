@@ -946,12 +946,12 @@ export default function RepoFlowApp() {
           {/* Two-line masked entrance headline */}
           <h1 className="m-0 font-medium text-[min(64px,calc((100vw-44px)/6.9))] min-[553px]:text-[calc(80*var(--u))] leading-[1.08] min-[553px]:leading-[calc(86*var(--u))] tracking-[-0.02em] min-[553px]:tracking-[calc(-1*var(--u))] text-[var(--ink)] text-center w-full">
             <span className="block overflow-hidden pt-[0.26em] -mt-[0.26em]">
-              <span className="block will-change-transform animate-lineRise [animation-delay:0.12s] text-center">
+              <span className="block will-change-transform animate-lineRise [animation-delay:0.12s] text-center font-extrabold tracking-tight">
                 Visualize Codebases
               </span>
             </span>
             <span className="block overflow-hidden pt-[0.26em] -mt-[0.26em]">
-              <span className="block will-change-transform animate-lineRise [animation-delay:0.22s] text-center">
+              <span className="block will-change-transform animate-lineRise [animation-delay:0.22s] text-center font-extrabold tracking-tight bg-gradient-to-r from-white via-gray-100 to-[#00f3ff] bg-clip-text text-transparent">
                 Instantly
               </span>
             </span>

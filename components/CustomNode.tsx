@@ -46,12 +46,15 @@ export default function CustomNode({
       }
     : undefined;
 
+  const pulseColor =
+    customColor || (resolvedCategory ? categoryStyle.borderHex : "#00f3ff");
+
   return (
     <div
       data-category={resolvedCategory || "default"}
       data-custom-color={customColor || ""}
       style={dynamicNodeStyle}
-      className={`px-5 py-3 rounded-lg bg-gray-950 border shadow-lg text-white font-mono text-sm transition-all duration-300 min-w-[220px] max-w-[260px] relative ${
+      className={`group px-5 py-3 rounded-lg bg-gray-950 border shadow-lg text-white font-mono text-sm transition-all duration-200 hover:scale-[1.012] min-w-[220px] max-w-[260px] relative ${
         customColor
           ? "border-current"
           : `${categoryStyle.hoverBorderClass} ${
@@ -61,6 +64,16 @@ export default function CustomNode({
             }`
       }`}
     >
+      {/* Subtle pulsing aura triggered on hover */}
+      <span
+        aria-hidden="true"
+        style={{
+          borderColor: pulseColor,
+          boxShadow: `0 0 16px ${pulseColor}55`,
+        }}
+        className="custom-node-pulse-ring pointer-events-none absolute -inset-[2px] rounded-lg border opacity-0 transition-opacity duration-200 group-hover:opacity-100"
+      />
+
       {/* 4-Directional Snapping Connection Points (Top, Right, Bottom, Left) */}
       <Handle
         type="target"

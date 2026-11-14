@@ -149,6 +149,22 @@ input:focus-visible {
   }
 }
 
+@keyframes customNodePulse {
+  0%,
+  100% {
+    opacity: 0.5;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.16;
+    transform: scale(1.03);
+  }
+}
+
+.group:hover .custom-node-pulse-ring {
+  animation: customNodePulse 1.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
 /* Background video crossfade */
 .bg-video {
   position: absolute;
