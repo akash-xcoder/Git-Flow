@@ -64,6 +64,79 @@ export function computeExportDimensions(
   return { width, height, transform };
 }
 
+const SVG_EXPORT_STYLE_PROPS = [
+  "stroke",
+  "strokeWidth",
+  "strokeDasharray",
+  "strokeDashoffset",
+  "strokeLinecap",
+  "strokeLinejoin",
+  "strokeOpacity",
+  "fill",
+  "fillOpacity",
+  "filter",
+  "opacity",
+  "visibility",
+  "display",
+  "color",
+] as const;
+
+/**
+ * `html-to-image` deep-clones `<svg>` elements natively without recursing into
+ * SVG children to inline computed CSS rules. Temporarily copying computed styles
+ * onto SVG descendants (especially `.react-flow__edges` paths) guarantees edge
+ * strokes, dashes, and drop-shadow glows appear in both PNG and SVG exports.
+ */
+export function inlineSvgStylesForExport(rootElement: HTMLElement): () => void {
+  const backups: Array<{
+    el: SVGElement;
+    hadAttr: boolean;
+    prevValue: string | null;
+  }> = [];
+
+  const svgElements = rootElement.querySelectorAll("svg");
+  svgElements.forEach((svg) => {
+    const svgEl = svg as SVGElement;
+    backups.push({
+      el: svgEl,
+      hadAttr: svgEl.hasAttribute("style"),
+      prevValue: svgEl.getAttribute("style"),
+    });
+    svgEl.style.overflow = "visible";
+
+    const descendants = svgEl.querySelectorAll(
+      "g, path, line, polyline, polygon, rect, circle, ellipse, text, tspan, marker"
+    );
+    descendants.forEach((node) => {
+      const svgChild = node as SVGElement;
+      backups.push({
+        el: svgChild,
+        hadAttr: svgChild.hasAttribute("style"),
+        prevValue: svgChild.getAttribute("style"),
+      });
+
+      const computed = window.getComputedStyle(svgChild);
+      for (const prop of SVG_EXPORT_STYLE_PROPS) {
+        const val = computed[prop];
+        if (val) {
+          svgChild.style[prop] = val;
+        }
+      }
+    });
+  });
+
+  return () => {
+    for (let i = backups.length - 1; i >= 0; i--) {
+      const { el, hadAttr, prevValue } = backups[i];
+      if (hadAttr && prevValue !== null) {
+        el.setAttribute("style", prevValue);
+      } else {
+        el.removeAttribute("style");
+      }
+    }
+  };
+}
+
 /**
  * Exports the current React Flow canvas as a high-quality PNG or SVG image.
  */
@@ -120,10 +193,16 @@ export async function exportReactFlowAsImage(
     },
   };
 
-  const dataUrl =
-    format === "svg"
-      ? await toSvg(viewportElement, exportConfig)
-      : await toPng(viewportElement, exportConfig);
+  const restoreSvgStyles = inlineSvgStylesForExport(viewportElement);
+  let dataUrl: string;
+  try {
+    dataUrl =
+      format === "svg"
+        ? await toSvg(viewportElement, exportConfig)
+        : await toPng(viewportElement, exportConfig);
+  } finally {
+    restoreSvgStyles();
+  }
 
   downloadDataUrl(dataUrl, outputFileName);
   return { dataUrl, fileName: outputFileName };
