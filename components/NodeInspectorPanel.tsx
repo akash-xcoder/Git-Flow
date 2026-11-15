@@ -92,9 +92,11 @@ function NodeInspectorForm({
     service: <Cog className="w-4 h-4 text-yellow-300" />,
     source: <GitBranch className="w-4 h-4 text-emerald-300" />,
     pipeline: <Cpu className="w-4 h-4 text-indigo-300" />,
+    ci: <Cpu className="w-4 h-4 text-indigo-300" />,
     artifact: <Package className="w-4 h-4 text-rose-300" />,
     deployment: <Globe className="w-4 h-4 text-blue-300" />,
     ui: <Layout className="w-4 h-4 text-sky-300" />,
+    frontend: <Layout className="w-4 h-4 text-sky-300" />,
     config: <Settings className="w-4 h-4 text-slate-300" />,
     security: <Shield className="w-4 h-4 text-orange-300" />,
     testing: <FlaskConical className="w-4 h-4 text-lime-300" />,
@@ -190,9 +192,11 @@ function NodeInspectorForm({
                 <option value="service">Service</option>
                 <option value="source">Source</option>
                 <option value="pipeline">Pipeline</option>
+                <option value="ci">CI</option>
                 <option value="artifact">Artifact</option>
                 <option value="deployment">Deployment</option>
                 <option value="ui">UI</option>
+                <option value="frontend">Frontend</option>
                 <option value="config">Config</option>
                 <option value="security">Security</option>
                 <option value="testing">Testing</option>

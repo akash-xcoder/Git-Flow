@@ -54,7 +54,7 @@ export async function POST(req: Request) {
       1. Create a "group" node for every logical cluster:
          { "id": "group-inference", "type": "group", "data": { "label": "YOLO Inference" } }
       
-      2. Create standard nodes for the actual files, and assign them to a group using 'parentNode', plus semantic 'category' metadata ("api", "database", "service", "ui", "config", "security", "testing", "source", "pipeline", "artifact", or "deployment"):
+      2. Create standard nodes for the actual files, and assign them to a group using 'parentNode', plus semantic 'category' metadata ("ci", "database", "frontend", "api", "service", "ui", "config", "security", "testing", "source", "pipeline", "artifact", or "deployment"):
          { 
            "id": "file-worker-ts", 
            "type": "custom", 
@@ -63,7 +63,10 @@ export async function POST(req: Request) {
          }
       
       EDGES ARRAY:
-      Map the functional data flow between the files (e.g., Viewport.tsx -> torch.ts).
+      Map the functional data flow between the custom file nodes across groups (e.g., Viewport.tsx -> torch.ts).
+      IMPORTANT:
+      - Every edge's "source" and "target" MUST reference "custom" file node IDs (NEVER reference "group" container IDs).
+      - Connect every logical group into one unified architecture graph so no container is left isolated without paths to/from other containers.
       {
         "id": "e-sourceId-targetId",
         "source": "source-node-id",
@@ -78,65 +81,71 @@ export async function POST(req: Request) {
     `;
 
     try {
-      const response = await ai.models.generateContent({
-        model: "gemini-3.8-flash",
-        contents: prompt,
-        config: {
-          maxOutputTokens: 8192,
-          thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              nodes: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    id: { type: Type.STRING },
-                    type: { type: Type.STRING },
-                    parentNode: { type: Type.STRING },
-                    position: {
-                      type: Type.OBJECT,
-                      properties: {
-                        x: { type: Type.NUMBER },
-                        y: { type: Type.NUMBER },
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("Gemini generation timed out")), 12000)
+      );
+      const response = await Promise.race([
+        ai.models.generateContent({
+          model: "gemini-4-hydrogen",
+          contents: prompt,
+          config: {
+            maxOutputTokens: 8192,
+            thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: Type.OBJECT,
+              properties: {
+                nodes: {
+                  type: Type.ARRAY,
+                  items: {
+                    type: Type.OBJECT,
+                    properties: {
+                      id: { type: Type.STRING },
+                      type: { type: Type.STRING },
+                      parentNode: { type: Type.STRING },
+                      position: {
+                        type: Type.OBJECT,
+                        properties: {
+                          x: { type: Type.NUMBER },
+                          y: { type: Type.NUMBER },
+                        },
+                      },
+                      data: {
+                        type: Type.OBJECT,
+                        properties: {
+                          label: { type: Type.STRING },
+                          sublabel: { type: Type.STRING },
+                          category: { type: Type.STRING },
+                          latencyMs: { type: Type.NUMBER },
+                        },
+                        required: ["label"],
                       },
                     },
-                    data: {
-                      type: Type.OBJECT,
-                      properties: {
-                        label: { type: Type.STRING },
-                        sublabel: { type: Type.STRING },
-                        category: { type: Type.STRING },
-                        latencyMs: { type: Type.NUMBER },
-                      },
-                      required: ["label"],
+                    required: ["id", "type", "data"],
+                  },
+                },
+                edges: {
+                  type: Type.ARRAY,
+                  items: {
+                    type: Type.OBJECT,
+                    properties: {
+                      id: { type: Type.STRING },
+                      source: { type: Type.STRING },
+                      target: { type: Type.STRING },
+                      type: { type: Type.STRING },
+                      animated: { type: Type.BOOLEAN },
+                      className: { type: Type.STRING },
                     },
+                    required: ["id", "source", "target"],
                   },
-                  required: ["id", "type", "data"],
                 },
               },
-              edges: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    id: { type: Type.STRING },
-                    source: { type: Type.STRING },
-                    target: { type: Type.STRING },
-                    type: { type: Type.STRING },
-                    animated: { type: Type.BOOLEAN },
-                    className: { type: Type.STRING },
-                  },
-                  required: ["id", "source", "target"],
-                },
-              },
+              required: ["nodes", "edges"],
             },
-            required: ["nodes", "edges"],
           },
-        },
-      });
+        }),
+        timeoutPromise,
+      ]);
 
       const responseText = (response.text ?? "").trim();
       const parsedJson = JSON.parse(responseText);

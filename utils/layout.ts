@@ -3,10 +3,64 @@ import { Node, Edge, Position } from "reactflow";
 import type { CustomNodeData } from "@/lib/repo-graph";
 import { snapEdgesToNearestConnectionPoints } from "@/src/utils/edge-snapping";
 
-// Enable compound graphs for parent/child groups
-const dagreGraph = new dagre.graphlib.Graph({ compound: true });
-dagreGraph.setGraph({ rankdir: "TB", ranksep: 120, nodesep: 80, edgesep: 40 });
-dagreGraph.setDefaultEdgeLabel(() => ({}));
+const NODE_WIDTH = 250;
+const NODE_HEIGHT = 80;
+const GROUP_PAD_X = 36;
+const GROUP_PAD_TOP = 54;
+const GROUP_PAD_BOTTOM = 36;
+const MIN_GROUP_WIDTH = 400;
+const MIN_GROUP_HEIGHT = 180;
+const CONTAINER_GAP = 48;
+
+interface BoxRect {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+function separateTopLevelBoxes(boxes: BoxRect[], direction: "LR" | "TB"): void {
+  if (boxes.length <= 1) return;
+
+  // Sort deterministically from top-left to bottom-right so primary containers stay anchored
+  boxes.sort((a, b) =>
+    direction === "LR" ? a.x - b.x || a.y - b.y : a.y - b.y || a.x - b.x
+  );
+
+  for (let pass = 0; pass < 6; pass++) {
+    let moved = false;
+    for (let i = 0; i < boxes.length; i++) {
+      for (let j = i + 1; j < boxes.length; j++) {
+        const a = boxes[i];
+        const b = boxes[j];
+
+        const overlapX =
+          Math.min(a.x + a.width + CONTAINER_GAP, b.x + b.width + CONTAINER_GAP) -
+          Math.max(a.x, b.x);
+        const overlapY =
+          Math.min(a.y + a.height + CONTAINER_GAP, b.y + b.height + CONTAINER_GAP) -
+          Math.max(a.y, b.y);
+
+        const intersects =
+          a.x < b.x + b.width + CONTAINER_GAP &&
+          a.x + a.width + CONTAINER_GAP > b.x &&
+          a.y < b.y + b.height + CONTAINER_GAP &&
+          a.y + a.height + CONTAINER_GAP > b.y;
+
+        if (!intersects) continue;
+
+        if (overlapX < overlapY) {
+          b.x = a.x + a.width + CONTAINER_GAP;
+        } else {
+          b.y = a.y + a.height + CONTAINER_GAP;
+        }
+        moved = true;
+      }
+    }
+    if (!moved) break;
+  }
+}
 
 export const getLayoutedElements = <T = CustomNodeData>(
   nodes: Node<T>[],
@@ -15,61 +69,173 @@ export const getLayoutedElements = <T = CustomNodeData>(
 ): { nodes: Node<T>[]; edges: Edge[] } => {
   const isHorizontal = direction === "LR";
 
-  // Clear any residual nodes from previous layout calculations
-  dagreGraph.nodes().forEach((n) => dagreGraph.removeNode(n));
+  // Fresh graph instance per layout call avoids any residual compound state
+  const dagreGraph = new dagre.graphlib.Graph({ compound: true });
   dagreGraph.setGraph({
     rankdir: direction,
-    ranksep: 120,
-    nodesep: 80,
-    edgesep: 40,
+    ranksep: 130,
+    nodesep: 85,
+    edgesep: 45,
+  });
+  dagreGraph.setDefaultEdgeLabel(() => ({}));
+
+  const groupIds = new Set(
+    nodes.filter((n) => n.type === "group").map((n) => n.id)
+  );
+  const groupChildren = new Map<string, Node<T>[]>();
+  for (const node of nodes) {
+    if (node.type !== "group" && node.parentNode && groupIds.has(node.parentNode)) {
+      const list = groupChildren.get(node.parentNode) ?? [];
+      list.push(node);
+      groupChildren.set(node.parentNode, list);
+    }
+  }
+
+  // First pass: register non-empty group containers and all standard nodes
+  nodes.forEach((node) => {
+    if (node.type === "group") {
+      if ((groupChildren.get(node.id)?.length ?? 0) > 0) {
+        dagreGraph.setNode(node.id, {});
+      } else {
+        dagreGraph.setNode(node.id, { width: MIN_GROUP_WIDTH, height: MIN_GROUP_HEIGHT });
+      }
+    } else {
+      dagreGraph.setNode(node.id, { width: NODE_WIDTH, height: NODE_HEIGHT });
+    }
   });
 
-  // First pass: add all nodes to dagre
+  // Second pass: establish parent-child relationships for compound layout
   nodes.forEach((node) => {
-    // Make group nodes larger, standard nodes normal size
-    const width = node.type === "group" ? 400 : 250;
-    const height = node.type === "group" ? 300 : 80;
-    dagreGraph.setNode(node.id, { width, height });
-  });
-
-  // Second pass: establish parent-child relationships for the layout engine
-  nodes.forEach((node) => {
-    if (node.parentNode && dagreGraph.hasNode(node.parentNode)) {
+    if (
+      node.type !== "group" &&
+      node.parentNode &&
+      dagreGraph.hasNode(node.parentNode)
+    ) {
       dagreGraph.setParent(node.id, node.parentNode);
     }
   });
 
+  // Remap any edge targeting a group node to a child node so Dagre compound ranker never throws
+  const resolveNonGroupNodeId = (id: string, excludeId?: string): string | null => {
+    if (!dagreGraph.hasNode(id)) return null;
+    if (!groupIds.has(id)) return id;
+    const children = groupChildren.get(id) ?? [];
+    if (children.length === 0) return null;
+    const alt = excludeId ? children.find((c) => c.id !== excludeId) : undefined;
+    return (alt ?? children[0]).id;
+  };
+
+  const seenPairs = new Set<string>();
+  const sanitizedEdges: Edge[] = [];
+
   edges.forEach((edge) => {
-    if (dagreGraph.hasNode(edge.source) && dagreGraph.hasNode(edge.target)) {
-      dagreGraph.setEdge(edge.source, edge.target);
-    }
+    const source = resolveNonGroupNodeId(edge.source);
+    const target = resolveNonGroupNodeId(edge.target, source ?? undefined);
+    if (!source || !target || source === target) return;
+    const pairKey = `${source}->${target}`;
+    if (seenPairs.has(pairKey)) return;
+    seenPairs.add(pairKey);
+
+    dagreGraph.setEdge(source, target);
+    sanitizedEdges.push({
+      ...edge,
+      source,
+      target,
+      type: edge.type || "smoothstep",
+    });
   });
 
   dagre.layout(dagreGraph);
 
-  // Compute group top-left positions and padded bounding dimensions first
-  const groupBounds = new Map<
-    string,
-    { x: number; y: number; width: number; height: number }
-  >();
-
+  // Compute global top-left bounds for every child and ungrouped node directly from Dagre
+  const childGlobalBounds = new Map<string, { x: number; y: number }>();
   nodes.forEach((node) => {
-    if (node.type === "group") {
-      const nodeWithPosition = dagreGraph.node(node.id);
-      const width = Math.max(400, (nodeWithPosition?.width || 400) + 64);
-      const height = Math.max(220, (nodeWithPosition?.height || 300) + 84);
-      const x = (nodeWithPosition?.x || 0) - width / 2;
-      const y = (nodeWithPosition?.y || 0) - height / 2;
-      groupBounds.set(node.id, { x, y, width, height });
+    if (node.type === "group") return;
+    const pos = dagreGraph.node(node.id);
+    childGlobalBounds.set(node.id, {
+      x: (pos?.x || 0) - NODE_WIDTH / 2,
+      y: (pos?.y || 0) - NODE_HEIGHT / 2,
+    });
+  });
+
+  // Derive tight, evenly-padded container bounds enclosing all children
+  const groupBounds = new Map<string, BoxRect>();
+  nodes.forEach((node) => {
+    if (node.type !== "group") return;
+    const children = groupChildren.get(node.id) ?? [];
+    if (children.length > 0) {
+      let minX = Infinity;
+      let minY = Infinity;
+      let maxX = -Infinity;
+      let maxY = -Infinity;
+      for (const child of children) {
+        const cb = childGlobalBounds.get(child.id)!;
+        minX = Math.min(minX, cb.x);
+        minY = Math.min(minY, cb.y);
+        maxX = Math.max(maxX, cb.x + NODE_WIDTH);
+        maxY = Math.max(maxY, cb.y + NODE_HEIGHT);
+      }
+      const rawWidth = maxX - minX + GROUP_PAD_X * 2;
+      const width = Math.max(MIN_GROUP_WIDTH, rawWidth);
+      const extraHalfX = (width - rawWidth) / 2;
+      const rawHeight = maxY - minY + GROUP_PAD_TOP + GROUP_PAD_BOTTOM;
+      const height = Math.max(MIN_GROUP_HEIGHT, rawHeight);
+      const extraHalfY = (height - rawHeight) / 2;
+      const x = minX - GROUP_PAD_X - extraHalfX;
+      const y = minY - GROUP_PAD_TOP - extraHalfY;
+      groupBounds.set(node.id, { id: node.id, x, y, width, height });
+    } else {
+      const pos = dagreGraph.node(node.id);
+      const width = MIN_GROUP_WIDTH;
+      const height = MIN_GROUP_HEIGHT;
+      groupBounds.set(node.id, {
+        id: node.id,
+        x: (pos?.x || 0) - width / 2,
+        y: (pos?.y || 0) - height / 2,
+        width,
+        height,
+      });
     }
   });
 
-  // Apply the mathematically calculated coordinates back to the React Flow nodes
-  const mappedNodes: Node<T>[] = nodes.map((node) => {
-    const nodeWithPosition = dagreGraph.node(node.id);
+  // Compute relative child offsets BEFORE container overlap separation so moving a container moves its children cleanly
+  const childRelativePos = new Map<string, { x: number; y: number }>();
+  nodes.forEach((node) => {
+    if (node.type === "group") return;
+    const globalPos = childGlobalBounds.get(node.id)!;
+    if (node.parentNode && groupBounds.has(node.parentNode)) {
+      const parentRect = groupBounds.get(node.parentNode)!;
+      childRelativePos.set(node.id, {
+        x: globalPos.x - parentRect.x,
+        y: globalPos.y - parentRect.y,
+      });
+    }
+  });
 
+  // Separate any overlapping top-level containers / ungrouped nodes cleanly
+  const topLevelBoxes: BoxRect[] = [
+    ...Array.from(groupBounds.values()),
+    ...nodes
+      .filter((n) => n.type !== "group" && (!n.parentNode || !groupBounds.has(n.parentNode)))
+      .map((n) => {
+        const gp = childGlobalBounds.get(n.id)!;
+        return {
+          id: n.id,
+          x: gp.x,
+          y: gp.y,
+          width: NODE_WIDTH,
+          height: NODE_HEIGHT,
+        };
+      }),
+  ];
+
+  separateTopLevelBoxes(topLevelBoxes, direction);
+
+  const topLevelBoxMap = new Map(topLevelBoxes.map((b) => [b.id, b]));
+
+  const mappedNodes: Node<T>[] = nodes.map((node) => {
     if (node.type === "group") {
-      const bounds = groupBounds.get(node.id)!;
+      const bounds = topLevelBoxMap.get(node.id) ?? groupBounds.get(node.id)!;
       return {
         ...node,
         style: {
@@ -84,32 +250,32 @@ export const getLayoutedElements = <T = CustomNodeData>(
       };
     }
 
-    const width = 250;
-    const height = 80;
-    const globalX = (nodeWithPosition?.x || 0) - width / 2;
-    const globalY = (nodeWithPosition?.y || 0) - height / 2;
-
     if (node.parentNode && groupBounds.has(node.parentNode)) {
-      const parentBounds = groupBounds.get(node.parentNode)!;
+      const relPos = childRelativePos.get(node.id) ?? {
+        x: GROUP_PAD_X,
+        y: GROUP_PAD_TOP,
+      };
       return {
         ...node,
         extent: "parent",
         targetPosition: isHorizontal ? Position.Left : Position.Top,
         sourcePosition: isHorizontal ? Position.Right : Position.Bottom,
         position: {
-          x: globalX - parentBounds.x,
-          y: globalY - parentBounds.y + 18,
+          x: relPos.x,
+          y: relPos.y,
         },
       };
     }
 
+    const box = topLevelBoxMap.get(node.id);
+    const gp = childGlobalBounds.get(node.id)!;
     return {
       ...node,
       targetPosition: isHorizontal ? Position.Left : Position.Top,
       sourcePosition: isHorizontal ? Position.Right : Position.Bottom,
       position: {
-        x: globalX,
-        y: globalY,
+        x: box ? box.x : gp.x,
+        y: box ? box.y : gp.y,
       },
     };
   });
@@ -120,13 +286,8 @@ export const getLayoutedElements = <T = CustomNodeData>(
     ...mappedNodes.filter((n) => n.type !== "group"),
   ];
 
-  const rawEdges: Edge[] = edges.map((edge) => ({
-    ...edge,
-    type: edge.type || "smoothstep",
-  }));
-
   const { updatedEdges: layoutedEdges } = snapEdgesToNearestConnectionPoints(
-    rawEdges,
+    sanitizedEdges,
     layoutedNodes as Node[]
   );
 

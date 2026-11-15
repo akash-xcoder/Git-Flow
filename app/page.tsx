@@ -58,6 +58,7 @@ import {
   computeGraphMetrics,
   createDownstreamNode,
   deriveArchitectureFromFiles,
+  normalizeGeneratedGraph,
   type CustomNodeData,
   type NodeCategory,
   type TopologyPreset,
@@ -176,6 +177,11 @@ export default function RepoFlowApp() {
   const menuRef = useRef<HTMLElement | null>(null);
   const heroInputRef = useRef<HTMLInputElement | null>(null);
   const exportMenuRef = useRef<HTMLDivElement | null>(null);
+  const flowRequestIdRef = useRef<number>(0);
+  const layoutDirectionRef = useRef<"LR" | "TB">(layoutDirection);
+  useEffect(() => {
+    layoutDirectionRef.current = layoutDirection;
+  }, [layoutDirection]);
 
   const nodeTypes = useMemo(() => STATIC_NODE_TYPES, []);
 
@@ -467,6 +473,7 @@ export default function RepoFlowApp() {
       return;
     }
 
+    const requestId = ++flowRequestIdRef.current;
     setUrlError(null);
     setSelectedNodeId(null);
     // Activate the transparent React Flow Visualizer over the dimmed & blurred video
@@ -482,6 +489,7 @@ export default function RepoFlowApp() {
       });
 
       const githubData = await githubRes.json();
+      if (flowRequestIdRef.current !== requestId) return;
       if (!githubRes.ok) {
         throw new Error(
           githubData.error || "Failed to fetch GitHub repository tree."
@@ -510,7 +518,7 @@ export default function RepoFlowApp() {
       const initialLayouted = getLayoutedElements(
         initialDerived.nodes,
         initialDerived.edges,
-        layoutDirection
+        layoutDirectionRef.current
       );
       setNodes(initialLayouted.nodes);
       setEdges(initialLayouted.edges);
@@ -531,30 +539,35 @@ export default function RepoFlowApp() {
       });
 
       const rawAiData = await generateRes.json();
+      if (flowRequestIdRef.current !== requestId) return;
       if (!generateRes.ok) {
         throw new Error(
           rawAiData.error || "Failed to generate architecture diagram."
         );
       }
 
-      // Step 3: Fix the AI's coordinates with compound Dagre and render the glowing diagram
+      // Step 3: Normalize connectivity & compound Dagre layout so containers stay connected and non-overlapping
       if (Array.isArray(rawAiData.nodes) && Array.isArray(rawAiData.edges)) {
+        const normalized = normalizeGeneratedGraph(rawAiData);
         const { nodes: layoutedNodes, edges: layoutedEdges } =
           getLayoutedElements(
-            rawAiData.nodes,
-            rawAiData.edges,
-            layoutDirection
+            normalized.nodes,
+            normalized.edges,
+            layoutDirectionRef.current
           );
         setNodes(layoutedNodes);
         setEdges(layoutedEdges);
         triggerFitView();
       }
     } catch (err: unknown) {
+      if (flowRequestIdRef.current !== requestId) return;
       const msg =
         err instanceof Error ? err.message : "Failed to analyze repository.";
       setUrlError(msg);
     } finally {
-      setLoadingStage(null);
+      if (flowRequestIdRef.current === requestId) {
+        setLoadingStage(null);
+      }
     }
   };
 
@@ -564,6 +577,8 @@ export default function RepoFlowApp() {
   };
 
   const handleSwitchPreset = (preset: TopologyPreset) => {
+    flowRequestIdRef.current += 1;
+    setLoadingStage(null);
     setActivePreset(preset);
     setUrlError(null);
     setIsVisualizerActive(true);

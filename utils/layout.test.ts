@@ -79,3 +79,63 @@ test("getLayoutedElements sizes group nodes and positions child nodes with paren
   assert.equal(layouted[1].extent, "parent");
   assert.equal(layoutedEdges[0].type, "smoothstep");
 });
+
+test("getLayoutedElements separates multiple containers cleanly, prevents Dagre crashes on group edges, and snaps cross-container handles", () => {
+  const nodes: Node[] = [
+    { id: "group-a", type: "group", position: { x: 0, y: 0 }, data: { label: "Frontend" } },
+    { id: "group-b", type: "group", position: { x: 0, y: 0 }, data: { label: "Backend API" } },
+    { id: "group-c", type: "group", position: { x: 0, y: 0 }, data: { label: "Database" } },
+    { id: "a1", type: "custom", parentNode: "group-a", position: { x: 0, y: 0 }, data: { label: "page.tsx" } },
+    { id: "a2", type: "custom", parentNode: "group-a", position: { x: 0, y: 0 }, data: { label: "layout.tsx" } },
+    { id: "b1", type: "custom", parentNode: "group-b", position: { x: 0, y: 0 }, data: { label: "route.ts" } },
+    { id: "c1", type: "custom", parentNode: "group-c", position: { x: 0, y: 0 }, data: { label: "schema.prisma" } },
+  ];
+  const edges: Edge[] = [
+    { id: "e-ab", source: "a1", target: "b1", className: "electric-edge" },
+    // Intentionally reference group IDs to verify layout sanitization never crashes Dagre
+    { id: "e-bc-group", source: "group-b", target: "group-c", className: "electric-edge" },
+  ];
+
+  const { nodes: layoutedNodes, edges: layoutedEdges } = getLayoutedElements(nodes, edges, "TB");
+
+  const groups = layoutedNodes.filter((n) => n.type === "group");
+  assert.equal(groups.length, 3);
+
+  // Verify zero container-to-container overlap (with CONTAINER_GAP = 48 clearance check)
+  for (let i = 0; i < groups.length; i++) {
+    const g1 = groups[i];
+    const w1 = Number(g1.style?.width || 0);
+    const h1 = Number(g1.style?.height || 0);
+    for (let j = i + 1; j < groups.length; j++) {
+      const g2 = groups[j];
+      const w2 = Number(g2.style?.width || 0);
+      const h2 = Number(g2.style?.height || 0);
+      const overlaps =
+        g1.position.x < g2.position.x + w2 &&
+        g1.position.x + w1 > g2.position.x &&
+        g1.position.y < g2.position.y + h2 &&
+        g1.position.y + h1 > g2.position.y;
+      assert.equal(overlaps, false, `Containers ${g1.id} and ${g2.id} must not overlap`);
+    }
+  }
+
+  // Verify every child node stays inside its parent group container bounds
+  const groupMap = new Map(groups.map((g) => [g.id, g]));
+  for (const child of layoutedNodes.filter((n) => n.type !== "group")) {
+    const parent = groupMap.get(child.parentNode!);
+    assert.ok(parent, `Parent ${child.parentNode} must exist`);
+    const pw = Number(parent.style?.width || 0);
+    const ph = Number(parent.style?.height || 0);
+    assert.ok(child.position.x >= 0 && child.position.x + 250 <= pw, `${child.id} fits horizontally inside ${parent.id}`);
+    assert.ok(child.position.y >= 0 && child.position.y + 80 <= ph, `${child.id} fits vertically inside ${parent.id}`);
+  }
+
+  // Verify edges were snapped with valid sourceHandle/targetHandle and target custom nodes
+  assert.equal(layoutedEdges.length, 2);
+  for (const edge of layoutedEdges) {
+    assert.ok(edge.sourceHandle?.startsWith("source-"));
+    assert.ok(edge.targetHandle?.startsWith("target-"));
+    assert.equal(edge.type, "smoothstep");
+  }
+});
+

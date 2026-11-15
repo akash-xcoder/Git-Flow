@@ -4,9 +4,11 @@ export type NodeCategory =
   | "service"
   | "source"
   | "pipeline"
+  | "ci"
   | "artifact"
   | "deployment"
   | "ui"
+  | "frontend"
   | "config"
   | "security"
   | "testing";
@@ -17,9 +19,11 @@ export const VALID_NODE_CATEGORIES: ReadonlySet<NodeCategory> = new Set([
   "service",
   "source",
   "pipeline",
+  "ci",
   "artifact",
   "deployment",
   "ui",
+  "frontend",
   "config",
   "security",
   "testing",
@@ -219,18 +223,6 @@ export function normalizeGeneratedGraph(raw: unknown): {
         typeof dataObj.sublabel === "string" && dataObj.sublabel.trim()
           ? dataObj.sublabel.trim()
           : undefined;
-      const rawCategory =
-        typeof dataObj.category === "string"
-          ? (dataObj.category.trim().toLowerCase() as NodeCategory)
-          : undefined;
-      const category =
-        rawCategory && VALID_NODE_CATEGORIES.has(rawCategory)
-          ? rawCategory
-          : undefined;
-      const latencyMs =
-        typeof dataObj.latencyMs === "number" && Number.isFinite(dataObj.latencyMs)
-          ? dataObj.latencyMs
-          : undefined;
       const filePath =
         typeof dataObj.filePath === "string" && dataObj.filePath.trim()
           ? dataObj.filePath.trim()
@@ -238,6 +230,29 @@ export function normalizeGeneratedGraph(raw: unknown): {
       const color =
         typeof dataObj.color === "string" && dataObj.color.trim()
           ? dataObj.color.trim()
+          : undefined;
+      const rawCategory =
+        typeof dataObj.category === "string"
+          ? (dataObj.category.trim().toLowerCase() as NodeCategory)
+          : undefined;
+      const explicitCategory =
+        rawCategory && VALID_NODE_CATEGORIES.has(rawCategory)
+          ? rawCategory
+          : undefined;
+      const inferredPathCandidate =
+        filePath ??
+        (sublabel && (sublabel.includes("/") || sublabel.includes("."))
+          ? sublabel
+          : undefined) ??
+        extractPathFromLabel(label);
+      const category =
+        explicitCategory ??
+        (nodeType === "custom" && inferredPathCandidate
+          ? assignCategoryFromFilePath(inferredPathCandidate)
+          : undefined);
+      const latencyMs =
+        typeof dataObj.latencyMs === "number" && Number.isFinite(dataObj.latencyMs)
+          ? dataObj.latencyMs
           : undefined;
 
       return {
@@ -287,23 +302,85 @@ export function normalizeGeneratedGraph(raw: unknown): {
   }
 
   // React Flow requires parent group nodes to appear before their children in the nodes array
+  const fileNodes = parsedNodes.filter((n) => n.type !== "group");
+  const referencedGroupIds = new Set(
+    fileNodes
+      .map((n) => n.parentNode)
+      .filter((pid): pid is string => Boolean(pid))
+  );
+
+  // Keep only group containers that actually contain at least one child node
   const groupNodes = [
     ...parsedNodes.filter((n) => n.type === "group"),
     ...autoGroups,
-  ];
-  const fileNodes = parsedNodes.filter((n) => n.type !== "group");
+  ].filter((g) => referencedGroupIds.has(g.id));
+
   const nodes: FlowNodeItem[] = [...groupNodes, ...fileNodes];
 
-  const validNodeIds = new Set(nodes.map((n) => n.id));
+  // Build lookups so edges referencing group IDs, file paths, or labels resolve cleanly to custom child nodes
+  const groupToChildren = new Map<string, FlowNodeItem[]>();
+  for (const child of fileNodes) {
+    if (child.parentNode) {
+      const list = groupToChildren.get(child.parentNode) ?? [];
+      list.push(child);
+      groupToChildren.set(child.parentNode, list);
+    }
+  }
+
+  const fileNodeIdSet = new Set(fileNodes.map((n) => n.id));
+  const groupIdSet = new Set(groupNodes.map((g) => g.id));
+  const aliasToNodeId = new Map<string, string>();
+  for (const child of fileNodes) {
+    aliasToNodeId.set(child.id.toLowerCase(), child.id);
+    if (child.data.filePath) {
+      aliasToNodeId.set(child.data.filePath.toLowerCase(), child.id);
+    }
+    if (child.data.sublabel) {
+      aliasToNodeId.set(child.data.sublabel.toLowerCase(), child.id);
+    }
+    const primaryLabel = child.data.label.split(/\s+\(/)[0]?.trim().toLowerCase();
+    if (primaryLabel && !aliasToNodeId.has(primaryLabel)) {
+      aliasToNodeId.set(primaryLabel, child.id);
+    }
+  }
+
+  const resolveEndpointToCustomNode = (
+    rawEndpoint: string,
+    preferDifferentFrom?: string
+  ): string | null => {
+    if (!rawEndpoint) return null;
+    if (fileNodeIdSet.has(rawEndpoint)) return rawEndpoint;
+    if (groupIdSet.has(rawEndpoint)) {
+      const children = groupToChildren.get(rawEndpoint) ?? [];
+      if (children.length === 0) return null;
+      const alt = preferDifferentFrom
+        ? children.find((c) => c.id !== preferDifferentFrom)
+        : undefined;
+      return (alt ?? children[0]).id;
+    }
+    const byAlias = aliasToNodeId.get(rawEndpoint.toLowerCase());
+    if (byAlias && fileNodeIdSet.has(byAlias)) return byAlias;
+    return null;
+  };
+
+  const seenEdgePairs = new Set<string>();
   const edges: FlowEdgeItem[] = rawEdges
     .map((item, idx): FlowEdgeItem | null => {
       if (!item || typeof item !== "object") return null;
       const e = item as Record<string, unknown>;
-      const source = typeof e.source === "string" ? e.source.trim() : "";
-      const target = typeof e.target === "string" ? e.target.trim() : "";
-      if (!source || !target || !validNodeIds.has(source) || !validNodeIds.has(target)) {
+      const rawSource = typeof e.source === "string" ? e.source.trim() : "";
+      const rawTarget = typeof e.target === "string" ? e.target.trim() : "";
+      const source = resolveEndpointToCustomNode(rawSource);
+      const target = resolveEndpointToCustomNode(rawTarget, source ?? undefined);
+      if (!source || !target || source === target) {
         return null;
       }
+      const pairKey = `${source}->${target}`;
+      if (seenEdgePairs.has(pairKey)) {
+        return null;
+      }
+      seenEdgePairs.add(pairKey);
+
       const id =
         typeof e.id === "string" && e.id.trim()
           ? e.id.trim()
@@ -320,21 +397,335 @@ export function normalizeGeneratedGraph(raw: unknown): {
     })
     .filter((e): e is FlowEdgeItem => e !== null);
 
-  // If LLM forgot edges between valid file nodes, chain them sequentially
-  if (edges.length === 0 && fileNodes.length > 1) {
-    for (let i = 0; i < fileNodes.length - 1; i++) {
-      edges.push({
-        id: `e-${fileNodes[i].id}-${fileNodes[i + 1].id}`,
-        source: fileNodes[i].id,
-        target: fileNodes[i + 1].id,
-        type: "smoothstep",
-        animated: true,
-        className: "electric-edge",
+  // Ensure every container / connected component is linked into a unified flow graph
+  // so no container gets isolated or separated with missing inter-container paths
+  if (fileNodes.length > 1) {
+    const adjacency = new Map<string, Set<string>>();
+    for (const node of fileNodes) {
+      adjacency.set(node.id, new Set());
+    }
+    for (const edge of edges) {
+      adjacency.get(edge.source)?.add(edge.target);
+      adjacency.get(edge.target)?.add(edge.source);
+    }
+
+    const visited = new Set<string>();
+    const components: FlowNodeItem[][] = [];
+
+    for (const node of fileNodes) {
+      if (visited.has(node.id)) continue;
+      const component: FlowNodeItem[] = [];
+      const queue: FlowNodeItem[] = [node];
+      visited.add(node.id);
+      while (queue.length > 0) {
+        const current = queue.shift()!;
+        component.push(current);
+        for (const neighborId of adjacency.get(current.id) ?? []) {
+          if (!visited.has(neighborId)) {
+            visited.add(neighborId);
+            const neighbor = fileNodes.find((n) => n.id === neighborId);
+            if (neighbor) queue.push(neighbor);
+          }
+        }
+      }
+      components.push(component);
+    }
+
+    if (components.length > 1) {
+      // Prefer the largest component (or the one with a source/config node) as the primary hub
+      let primaryIndex = 0;
+      let bestScore = -1;
+      components.forEach((comp, idx) => {
+        const hasRoot = comp.some(
+          (n) => n.data.category === "source" || n.id.includes("root")
+        );
+        const score = comp.length + (hasRoot ? 1000 : 0);
+        if (score > bestScore) {
+          bestScore = score;
+          primaryIndex = idx;
+        }
+      });
+
+      const primaryComp = components[primaryIndex];
+      const primaryAnchor =
+        primaryComp.find(
+          (n) => n.data.category === "source" || n.id.includes("root")
+        ) ?? primaryComp[0];
+
+      components.forEach((comp, idx) => {
+        if (idx === primaryIndex || comp.length === 0) return;
+        const targetNode = comp[0];
+        const pairKey = `${primaryAnchor.id}->${targetNode.id}`;
+        if (!seenEdgePairs.has(pairKey)) {
+          seenEdgePairs.add(pairKey);
+          edges.push({
+            id: `e-bridge-${primaryAnchor.id}-${targetNode.id}`,
+            source: primaryAnchor.id,
+            target: targetNode.id,
+            type: "smoothstep",
+            animated: true,
+            className: "electric-edge",
+          });
+        }
       });
     }
   }
 
   return { nodes, edges };
+}
+
+export const FILE_PATH_PREFIX_CATEGORIES: ReadonlyArray<{
+  prefix: string;
+  category: NodeCategory;
+}> = [
+  // CI / CD automation prefixes
+  { prefix: ".github/workflows/", category: "ci" },
+  { prefix: ".github/actions/", category: "ci" },
+  { prefix: ".github/", category: "ci" },
+  { prefix: ".gitlab-ci", category: "ci" },
+  { prefix: ".circleci/", category: "ci" },
+  { prefix: ".buildkite/", category: "ci" },
+  { prefix: ".azure-pipelines", category: "ci" },
+  { prefix: "ci/", category: "ci" },
+  { prefix: ".ci/", category: "ci" },
+  { prefix: "jenkins/", category: "ci" },
+  { prefix: "jenkinsfile", category: "ci" },
+
+  // Database & schema prefixes
+  { prefix: "prisma/", category: "database" },
+  { prefix: "drizzle/", category: "database" },
+  { prefix: "db/", category: "database" },
+  { prefix: "database/", category: "database" },
+  { prefix: "databases/", category: "database" },
+  { prefix: "migrations/", category: "database" },
+  { prefix: "migration/", category: "database" },
+  { prefix: "sql/", category: "database" },
+  { prefix: "schema/", category: "database" },
+  { prefix: "schemas/", category: "database" },
+  { prefix: "models/", category: "database" },
+  { prefix: "entities/", category: "database" },
+  { prefix: "repositories/", category: "database" },
+  { prefix: "supabase/", category: "database" },
+  { prefix: "src/db/", category: "database" },
+  { prefix: "src/database/", category: "database" },
+  { prefix: "src/prisma/", category: "database" },
+  { prefix: "src/drizzle/", category: "database" },
+  { prefix: "src/models/", category: "database" },
+  { prefix: "src/entities/", category: "database" },
+  { prefix: "src/schemas/", category: "database" },
+  { prefix: "server/db/", category: "database" },
+  { prefix: "backend/db/", category: "database" },
+
+  // API prefixes (matched before broader app/, pages/, server/, and backend/ prefixes)
+  { prefix: "app/api/", category: "api" },
+  { prefix: "src/app/api/", category: "api" },
+  { prefix: "pages/api/", category: "api" },
+  { prefix: "src/pages/api/", category: "api" },
+  { prefix: "api/", category: "api" },
+  { prefix: "apis/", category: "api" },
+  { prefix: "routes/", category: "api" },
+  { prefix: "controllers/", category: "api" },
+  { prefix: "endpoints/", category: "api" },
+  { prefix: "graphql/", category: "api" },
+  { prefix: "trpc/", category: "api" },
+  { prefix: "src/api/", category: "api" },
+  { prefix: "src/routes/", category: "api" },
+  { prefix: "src/controllers/", category: "api" },
+  { prefix: "src/endpoints/", category: "api" },
+  { prefix: "src/graphql/", category: "api" },
+  { prefix: "src/trpc/", category: "api" },
+  { prefix: "server/api/", category: "api" },
+  { prefix: "server/routes/", category: "api" },
+  { prefix: "backend/api/", category: "api" },
+  { prefix: "backend/routes/", category: "api" },
+
+  // Testing prefixes (matched before src/)
+  { prefix: "tests/", category: "testing" },
+  { prefix: "test/", category: "testing" },
+  { prefix: "__tests__/", category: "testing" },
+  { prefix: "e2e/", category: "testing" },
+  { prefix: "cypress/", category: "testing" },
+  { prefix: "playwright/", category: "testing" },
+  { prefix: "spec/", category: "testing" },
+  { prefix: "specs/", category: "testing" },
+  { prefix: "bench/", category: "testing" },
+  { prefix: "benchmarks/", category: "testing" },
+  { prefix: "src/tests/", category: "testing" },
+  { prefix: "src/test/", category: "testing" },
+  { prefix: "src/__tests__/", category: "testing" },
+
+  // Security & authentication prefixes (matched before src/)
+  { prefix: "auth/", category: "security" },
+  { prefix: "security/", category: "security" },
+  { prefix: "policies/", category: "security" },
+  { prefix: "middleware/", category: "security" },
+  { prefix: "src/auth/", category: "security" },
+  { prefix: "src/security/", category: "security" },
+  { prefix: "src/middleware/", category: "security" },
+
+  // Frontend UI & routing prefixes (matched before broader src/)
+  { prefix: "frontend/", category: "frontend" },
+  { prefix: "client/", category: "frontend" },
+  { prefix: "web/", category: "frontend" },
+  { prefix: "ui/", category: "frontend" },
+  { prefix: "components/", category: "frontend" },
+  { prefix: "pages/", category: "frontend" },
+  { prefix: "views/", category: "frontend" },
+  { prefix: "layouts/", category: "frontend" },
+  { prefix: "app/", category: "frontend" },
+  { prefix: "styles/", category: "frontend" },
+  { prefix: "public/", category: "frontend" },
+  { prefix: "assets/", category: "frontend" },
+  { prefix: "hooks/", category: "frontend" },
+  { prefix: "src/frontend/", category: "frontend" },
+  { prefix: "src/ui/", category: "frontend" },
+  { prefix: "src/components/", category: "frontend" },
+  { prefix: "src/pages/", category: "frontend" },
+  { prefix: "src/views/", category: "frontend" },
+  { prefix: "src/layouts/", category: "frontend" },
+  { prefix: "src/app/", category: "frontend" },
+  { prefix: "src/styles/", category: "frontend" },
+  { prefix: "src/hooks/", category: "frontend" },
+
+  // Deployment & infrastructure prefixes
+  { prefix: "deploy/", category: "deployment" },
+  { prefix: "deployment/", category: "deployment" },
+  { prefix: "infra/", category: "deployment" },
+  { prefix: "infrastructure/", category: "deployment" },
+  { prefix: "terraform/", category: "deployment" },
+  { prefix: "k8s/", category: "deployment" },
+  { prefix: "kubernetes/", category: "deployment" },
+  { prefix: "helm/", category: "deployment" },
+  { prefix: "charts/", category: "deployment" },
+  { prefix: "ansible/", category: "deployment" },
+  { prefix: "docker/", category: "deployment" },
+  { prefix: "dockerfile", category: "deployment" },
+  { prefix: "docker-compose", category: "deployment" },
+
+  // Backend & shared service prefixes
+  { prefix: "services/", category: "service" },
+  { prefix: "service/", category: "service" },
+  { prefix: "backend/", category: "service" },
+  { prefix: "server/", category: "service" },
+  { prefix: "workers/", category: "service" },
+  { prefix: "worker/", category: "service" },
+  { prefix: "jobs/", category: "service" },
+  { prefix: "queues/", category: "service" },
+  { prefix: "lib/", category: "service" },
+  { prefix: "utils/", category: "service" },
+  { prefix: "scripts/", category: "service" },
+  { prefix: "core/", category: "service" },
+  { prefix: "src/services/", category: "service" },
+  { prefix: "src/service/", category: "service" },
+  { prefix: "src/workers/", category: "service" },
+  { prefix: "src/lib/", category: "service" },
+  { prefix: "src/utils/", category: "service" },
+  { prefix: "src/server/", category: "service" },
+  { prefix: "src/", category: "service" },
+
+  // Configuration & manifest prefixes
+  { prefix: "config/", category: "config" },
+  { prefix: "configs/", category: "config" },
+  { prefix: ".vscode/", category: "config" },
+  { prefix: ".husky/", category: "config" },
+  { prefix: "package.json", category: "config" },
+  { prefix: "tsconfig", category: "config" },
+  { prefix: "next.config", category: "config" },
+  { prefix: "tailwind.config", category: "config" },
+  { prefix: "postcss.config", category: "config" },
+  { prefix: "eslint", category: "config" },
+  { prefix: ".eslintrc", category: "config" },
+  { prefix: ".env", category: "config" },
+  { prefix: "cargo.toml", category: "config" },
+  { prefix: "pyproject.toml", category: "config" },
+  { prefix: "go.mod", category: "config" },
+  { prefix: "makefile", category: "config" },
+
+  // Documentation / source prefixes
+  { prefix: "docs/", category: "source" },
+  { prefix: "readme", category: "source" },
+];
+
+function extractPathFromLabel(label: string): string | undefined {
+  const firstToken = label.trim().split(/\s+/)[0];
+  if (!firstToken) return undefined;
+  if (firstToken.includes("/") || firstToken.includes(".")) {
+    return firstToken;
+  }
+  return undefined;
+}
+
+/**
+ * Automatically assigns a semantic NodeCategory based on a repository file path's
+ * string prefix (normalized by trimming, converting backslashes, stripping leading
+ * './' or '/', and lowercasing), falling back to filename/extension heuristics
+ * when no top-level prefix matches.
+ */
+export function assignCategoryFromFilePath(filePath: string): NodeCategory {
+  if (typeof filePath !== "string") return "artifact";
+  const normalized = filePath
+    .trim()
+    .replace(/\\/g, "/")
+    .replace(/^(?:\.\/|\/)+/, "")
+    .toLowerCase();
+
+  if (!normalized) return "artifact";
+
+  for (const rule of FILE_PATH_PREFIX_CATEGORIES) {
+    if (normalized.startsWith(rule.prefix)) {
+      return rule.category;
+    }
+  }
+
+  // Fallback heuristics for nested monorepo paths or unrecognized prefixes
+  if (normalized.includes("/.github/workflows/")) return "ci";
+  if (
+    normalized.endsWith(".sql") ||
+    normalized.includes("/prisma/") ||
+    normalized.includes("/drizzle/") ||
+    normalized.includes("/db/") ||
+    normalized.includes("/models/") ||
+    normalized.includes("schema.")
+  ) {
+    return "database";
+  }
+  if (
+    normalized.includes("/api/") ||
+    normalized === "route.ts" ||
+    normalized === "route.js" ||
+    normalized.endsWith("/route.ts") ||
+    normalized.endsWith("/route.js")
+  ) {
+    return "api";
+  }
+  if (
+    normalized.includes(".test.") ||
+    normalized.includes(".spec.") ||
+    normalized.includes("/__tests__/")
+  ) {
+    return "testing";
+  }
+  if (
+    normalized.endsWith(".tsx") ||
+    normalized.endsWith(".jsx") ||
+    normalized.endsWith(".vue") ||
+    normalized.endsWith(".svelte") ||
+    normalized.endsWith(".css") ||
+    normalized.includes("/components/") ||
+    normalized.includes("/ui/")
+  ) {
+    return "frontend";
+  }
+  if (
+    normalized.endsWith("package.json") ||
+    normalized.endsWith("cargo.toml") ||
+    normalized.includes("next.config") ||
+    normalized.includes("tsconfig")
+  ) {
+    return "config";
+  }
+
+  return "artifact";
 }
 
 function inferFilePurpose(filePath: string): {
@@ -344,101 +735,98 @@ function inferFilePurpose(filePath: string): {
   groupLabel: string;
 } {
   const lower = filePath.toLowerCase();
-  if (lower.includes(".github/workflows/")) {
+  const category = assignCategoryFromFilePath(filePath);
+
+  if (category === "ci" || category === "pipeline") {
     return {
       purpose: "(CI/CD automation workflow)",
-      category: "pipeline",
+      category,
       groupId: "group-cicd",
       groupLabel: "CI/CD & Automation",
     };
   }
-  if (lower.endsWith("package.json") || lower.endsWith("cargo.toml")) {
+  if (category === "config") {
+    const isManifest =
+      lower.endsWith("package.json") ||
+      lower.endsWith("cargo.toml") ||
+      lower.endsWith("pyproject.toml") ||
+      lower.endsWith("go.mod");
     return {
-      purpose: "(Manifest & dependencies)",
-      category: "config",
+      purpose: isManifest
+        ? "(Manifest & dependencies)"
+        : "(Compiler & build config)",
+      category,
       groupId: "group-config",
       groupLabel: "Configuration & Manifests",
     };
   }
-  if (lower.includes("next.config") || lower.includes("tsconfig")) {
-    return {
-      purpose: "(Compiler & build config)",
-      category: "config",
-      groupId: "group-config",
-      groupLabel: "Configuration & Manifests",
-    };
-  }
-  if (
-    lower.includes("prisma") ||
-    lower.includes("drizzle") ||
-    lower.includes("schema") ||
-    lower.includes("/db/") ||
-    lower.includes("/models/") ||
-    lower.endsWith(".sql")
-  ) {
+  if (category === "database") {
     return {
       purpose: "(Database schema & data layer)",
-      category: "database",
+      category,
       groupId: "group-database",
       groupLabel: "Data Persistence & Schemas",
     };
   }
-  if (lower.includes("/api/") || lower.endsWith("route.ts") || lower.endsWith("route.js")) {
+  if (category === "api") {
     return {
       purpose: "(Server API endpoint)",
-      category: "api",
+      category,
       groupId: "group-backend",
       groupLabel: "Backend API & Services",
     };
   }
-  if (lower.endsWith("layout.tsx") || lower.endsWith("layout.js")) {
+  if (category === "frontend" || category === "ui") {
+    const purpose =
+      lower.endsWith("layout.tsx") || lower.endsWith("layout.js")
+        ? "(Root application shell)"
+        : lower.endsWith("page.tsx") ||
+            lower.endsWith("page.js") ||
+            lower.endsWith("index.ts")
+          ? "(View entry & route module)"
+          : "(Frontend UI module)";
     return {
-      purpose: "(Root application shell)",
-      category: "ui",
+      purpose,
+      category,
       groupId: "group-frontend",
       groupLabel: "Frontend UI & Routing",
     };
   }
-  if (lower.endsWith("page.tsx") || lower.endsWith("page.js") || lower.endsWith("index.ts")) {
-    return {
-      purpose: "(View entry & route module)",
-      category: "ui",
-      groupId: "group-frontend",
-      groupLabel: "Frontend UI & Routing",
-    };
-  }
-  if (lower.includes("component") || lower.includes("/ui/")) {
-    return {
-      purpose: "(UI component module)",
-      category: "ui",
-      groupId: "group-frontend",
-      groupLabel: "Frontend UI & Routing",
-    };
-  }
-  if (lower.includes("test") || lower.includes("spec") || lower.includes("bench")) {
+  if (category === "testing") {
     return {
       purpose: "(Verification & test suite)",
-      category: "testing",
+      category,
       groupId: "group-testing",
       groupLabel: "Verification & Tests",
     };
   }
-  if (
-    lower.includes("service") ||
-    lower.includes("lib/") ||
-    lower.includes("utils/") ||
-    lower.includes("scripts/")
-  ) {
+  if (category === "security") {
+    return {
+      purpose: "(Auth & security boundary)",
+      category,
+      groupId: "group-security",
+      groupLabel: "Security & Auth",
+    };
+  }
+  if (category === "deployment") {
+    return {
+      purpose: "(Infrastructure & deployment)",
+      category,
+      groupId: "group-deployment",
+      groupLabel: "Infrastructure & Deployment",
+    };
+  }
+  if (category === "service") {
     return {
       purpose: "(Core service & logic)",
-      category: "service",
+      category,
       groupId: "group-backend",
       groupLabel: "Backend API & Services",
     };
   }
   return {
     purpose: "(Core codebase module)",
-    category: "artifact",
+    category,
     groupId: "group-core",
     groupLabel: "Core Architecture",
   };

@@ -53,4 +53,12 @@ test("getNodeCategoryStyle returns neutral default for missing category and dist
     deployment.borderClass,
   ]);
   assert.equal(classes.size, 4);
+
+  const ci = getNodeCategoryStyle("ci");
+  const frontend = getNodeCategoryStyle("frontend");
+  assert.equal(ci.category, "ci");
+  assert.equal(ci.label, "ci");
+  assert.equal(frontend.category, "frontend");
+  assert.equal(frontend.label, "frontend");
+  assert.notEqual(ci.borderHex, frontend.borderHex);
 });

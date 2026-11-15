@@ -83,6 +83,18 @@ const CATEGORY_STYLES: Record<string, CategoryStyleConfig> = {
     handleBgClass: "!bg-indigo-400",
     borderHex: "#818cf8",
   },
+  ci: {
+    category: "ci",
+    label: "ci",
+    borderClass: "border-indigo-400/75",
+    selectedBorderClass:
+      "border-indigo-400 shadow-[0_0_18px_rgba(129,140,248,0.38)]",
+    hoverBorderClass:
+      "hover:border-indigo-300 hover:shadow-[0_0_15px_rgba(129,140,248,0.28)]",
+    accentTextClass: "text-indigo-300",
+    handleBgClass: "!bg-indigo-400",
+    borderHex: "#818cf8",
+  },
   artifact: {
     category: "artifact",
     label: "artifact",
@@ -110,6 +122,18 @@ const CATEGORY_STYLES: Record<string, CategoryStyleConfig> = {
   ui: {
     category: "ui",
     label: "ui",
+    borderClass: "border-sky-400/75",
+    selectedBorderClass:
+      "border-sky-400 shadow-[0_0_18px_rgba(56,189,248,0.38)]",
+    hoverBorderClass:
+      "hover:border-sky-300 hover:shadow-[0_0_15px_rgba(56,189,248,0.28)]",
+    accentTextClass: "text-sky-300",
+    handleBgClass: "!bg-sky-400",
+    borderHex: "#38bdf8",
+  },
+  frontend: {
+    category: "frontend",
+    label: "frontend",
     borderClass: "border-sky-400/75",
     selectedBorderClass:
       "border-sky-400 shadow-[0_0_18px_rgba(56,189,248,0.38)]",
@@ -170,16 +194,14 @@ const CATEGORY_ALIASES: Record<string, string> = {
   worker: "service",
   backend: "service",
   microservice: "service",
-  frontend: "ui",
-  component: "ui",
+  component: "frontend",
   test: "testing",
   tests: "testing",
   qa: "testing",
   auth: "security",
   repo: "source",
-  ci: "pipeline",
-  cd: "pipeline",
-  workflow: "pipeline",
+  cd: "ci",
+  workflow: "ci",
   deploy: "deployment",
   infra: "deployment",
 };
