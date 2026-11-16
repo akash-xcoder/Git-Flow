@@ -139,3 +139,30 @@ test("getLayoutedElements separates multiple containers cleanly, prevents Dagre 
   }
 });
 
+test("getLayoutedElements provides sufficient clearance between connected nodes for edge labels", () => {
+  const nodes: Node[] = [
+    { id: "ui", type: "custom", position: { x: 0, y: 0 }, data: { label: "Viewport.tsx", color: "#3b82f6" } },
+    { id: "worker", type: "custom", position: { x: 0, y: 0 }, data: { label: "worker.ts", color: "#eab308" } },
+  ];
+  const edges: Edge[] = [
+    { id: "e1", source: "ui", target: "worker", label: "streams frames" },
+  ];
+
+  const { nodes: lrNodes } = getLayoutedElements(nodes, edges, "LR");
+  const uiLr = lrNodes.find((n) => n.id === "ui")!;
+  const workerLr = lrNodes.find((n) => n.id === "worker")!;
+  assert.ok(
+    workerLr.position.x - (uiLr.position.x + 250) >= 180,
+    "LR horizontal gap between nodes must accommodate edge labels"
+  );
+
+  const { nodes: tbNodes } = getLayoutedElements(nodes, edges, "TB");
+  const uiTb = tbNodes.find((n) => n.id === "ui")!;
+  const workerTb = tbNodes.find((n) => n.id === "worker")!;
+  assert.ok(
+    workerTb.position.y - (uiTb.position.y + 80) >= 180,
+    "TB vertical gap between nodes must accommodate edge labels"
+  );
+});
+
+

@@ -5,12 +5,12 @@ import { snapEdgesToNearestConnectionPoints } from "@/src/utils/edge-snapping";
 
 const NODE_WIDTH = 250;
 const NODE_HEIGHT = 80;
-const GROUP_PAD_X = 36;
-const GROUP_PAD_TOP = 54;
-const GROUP_PAD_BOTTOM = 36;
+const GROUP_PAD_X = 48;
+const GROUP_PAD_TOP = 60;
+const GROUP_PAD_BOTTOM = 44;
 const MIN_GROUP_WIDTH = 400;
 const MIN_GROUP_HEIGHT = 180;
-const CONTAINER_GAP = 48;
+const CONTAINER_GAP = 72;
 
 interface BoxRect {
   id: string;
@@ -73,9 +73,9 @@ export const getLayoutedElements = <T = CustomNodeData>(
   const dagreGraph = new dagre.graphlib.Graph({ compound: true });
   dagreGraph.setGraph({
     rankdir: direction,
-    ranksep: 130,
-    nodesep: 85,
-    edgesep: 45,
+    ranksep: 185,
+    nodesep: 120,
+    edgesep: 65,
   });
   dagreGraph.setDefaultEdgeLabel(() => ({}));
 

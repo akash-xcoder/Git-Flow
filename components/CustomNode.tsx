@@ -29,13 +29,29 @@ export default function CustomNode({
     typeof data.color === "string" && data.color.trim()
       ? data.color.trim()
       : undefined;
+  const isSixDigitHex = customColor ? /^#[0-9a-f]{6}$/i.test(customColor) : false;
+  const glowSoft = customColor
+    ? isSixDigitHex
+      ? `${customColor}45`
+      : `color-mix(in srgb, ${customColor} 28%, transparent)`
+    : undefined;
+  const glowStrong = customColor
+    ? isSixDigitHex
+      ? `${customColor}75`
+      : `color-mix(in srgb, ${customColor} 46%, transparent)`
+    : undefined;
+  const pulseAura = isSixDigitHex
+    ? `${customColor}55`
+    : customColor
+      ? `color-mix(in srgb, ${customColor} 35%, transparent)`
+      : `${resolvedCategory ? categoryStyle.borderHex : "#00f3ff"}55`;
 
   const dynamicNodeStyle: React.CSSProperties | undefined = customColor
     ? {
         borderColor: customColor,
         boxShadow: selected
-          ? `0 0 22px ${customColor}75, 0 0 8px ${customColor}`
-          : `0 0 15px ${customColor}45`,
+          ? `0 0 22px ${glowStrong}, 0 0 8px ${customColor}`
+          : `0 0 15px ${glowSoft}`,
       }
     : undefined;
 
@@ -56,7 +72,7 @@ export default function CustomNode({
       style={dynamicNodeStyle}
       className={`group px-5 py-3 rounded-lg bg-gray-950 border shadow-lg text-white font-mono text-sm transition-all duration-200 hover:scale-[1.012] min-w-[220px] max-w-[260px] relative ${
         customColor
-          ? "border-current"
+          ? ""
           : `${categoryStyle.hoverBorderClass} ${
               selected
                 ? categoryStyle.selectedBorderClass
@@ -69,7 +85,7 @@ export default function CustomNode({
         aria-hidden="true"
         style={{
           borderColor: pulseColor,
-          boxShadow: `0 0 16px ${pulseColor}55`,
+          boxShadow: `0 0 16px ${pulseAura}`,
         }}
         className="custom-node-pulse-ring pointer-events-none absolute -inset-[2px] rounded-lg border opacity-0 transition-opacity duration-200 group-hover:opacity-100"
       />

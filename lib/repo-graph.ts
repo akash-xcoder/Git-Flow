@@ -57,6 +57,12 @@ export interface FlowEdgeItem {
   targetHandle?: string;
   type: "smoothstep";
   animated: boolean;
+  label?: string;
+  labelShowBg?: boolean;
+  labelStyle?: Record<string, string | number>;
+  labelBgStyle?: Record<string, string | number>;
+  labelBgPadding?: [number, number];
+  labelBgBorderRadius?: number;
   className: string;
   style?: Record<string, string | number>;
 }
@@ -386,12 +392,37 @@ export function normalizeGeneratedGraph(raw: unknown): {
           ? e.id.trim()
           : `e-${source}-${target}-${idx}`;
 
+      const edgeLabel =
+        typeof e.label === "string" && e.label.trim()
+          ? e.label.trim()
+          : undefined;
+
       return {
         id,
         source,
         target,
         type: "smoothstep",
         animated: true,
+        ...(edgeLabel
+          ? {
+              label: edgeLabel,
+              labelShowBg: true,
+              labelStyle: {
+                fill: "#e2e8f0",
+                fontSize: 11,
+                fontWeight: 500,
+                fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+              },
+              labelBgStyle: {
+                fill: "#090d16",
+                fillOpacity: 0.92,
+                stroke: "#334155",
+                strokeWidth: 1,
+              },
+              labelBgPadding: [8, 4] as [number, number],
+              labelBgBorderRadius: 6,
+            }
+          : {}),
         className: "electric-edge",
       };
     })

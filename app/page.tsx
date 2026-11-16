@@ -65,7 +65,24 @@ import {
 } from "@/lib/repo-graph";
 
 const STATIC_NODE_TYPES = { custom: CustomNode, group: GroupNode };
-const DEFAULT_EDGE_OPTIONS = { interactionWidth: 32 };
+const DEFAULT_EDGE_OPTIONS = {
+  interactionWidth: 32,
+  labelShowBg: true,
+  labelStyle: {
+    fill: "#e2e8f0",
+    fontSize: 11,
+    fontWeight: 500,
+    fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+  },
+  labelBgStyle: {
+    fill: "#090d16",
+    fillOpacity: 0.92,
+    stroke: "#334155",
+    strokeWidth: 1,
+  },
+  labelBgPadding: [8, 4] as [number, number],
+  labelBgBorderRadius: 6,
+};
 
 const BG_VIDEO_URL =
   "https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260912_104036_bd6924f6-3c8e-417e-8465-6d03c8c2e9e6.mp4";

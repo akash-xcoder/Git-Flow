@@ -305,4 +305,44 @@ test("normalizeGeneratedGraph resolves group-to-group and alias edges, prunes em
   assert.equal(visited.size, customNodes.length, "All custom nodes across containers must be connected");
 });
 
+test("normalizeGeneratedGraph preserves semantic data.color and descriptive edge labels", () => {
+  const normalized = normalizeGeneratedGraph({
+    nodes: [
+      { id: "group-ui", type: "group", data: { label: "User Interface" } },
+      { id: "group-ai", type: "group", data: { label: "YOLO Inference Engine" } },
+      {
+        id: "file-viewport-tsx",
+        type: "custom",
+        parentNode: "group-ui",
+        data: { label: "Viewport.tsx (Live Camera)", color: "#3b82f6" },
+      },
+      {
+        id: "file-worker-ts",
+        type: "custom",
+        parentNode: "group-ai",
+        data: { label: "worker.ts (Inference Thread)", color: "#eab308" },
+      },
+    ],
+    edges: [
+      {
+        id: "e-viewport-worker",
+        source: "file-viewport-tsx",
+        target: "file-worker-ts",
+        type: "smoothstep",
+        animated: true,
+        label: "streams frames",
+        className: "electric-edge",
+      },
+    ],
+  });
+
+  const fe = normalized.nodes.find((n) => n.id === "file-viewport-tsx");
+  const ai = normalized.nodes.find((n) => n.id === "file-worker-ts");
+  assert.equal(fe?.data.color, "#3b82f6");
+  assert.equal(ai?.data.color, "#eab308");
+  assert.equal(normalized.edges[0].label, "streams frames");
+  assert.equal(normalized.edges[0].labelShowBg, true);
+});
+
+
 

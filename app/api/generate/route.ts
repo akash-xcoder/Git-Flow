@@ -35,7 +35,14 @@ export async function POST(req: Request) {
       typeof rawRepoUrl === "string" && rawRepoUrl.trim()
         ? rawRepoUrl.trim()
         : `https://github.com/${owner}/${repo}`;
-    const sampledFiles = files.slice(0, 150);
+    const boilerplatePattern =
+      /(?:^|\/)(?:\.gitignore|\.gitattributes|\.eslint[^/]*|\.oxlintrc[^/]*|\.prettier[^/]*|\.vercelignore|package\.json|package-lock\.json|tsconfig[^/]*\.json|readme(?:\.[^/]*)?|license(?:\.[^/]*)?|\.env[^/]*)$/i;
+    const nonBoilerplateFiles = files.filter(
+      (f): f is string => typeof f === "string" && !boilerplatePattern.test(f)
+    );
+    const sampledFiles = (
+      nonBoilerplateFiles.length > 0 ? nonBoilerplateFiles : files
+    ).slice(0, 100);
     const apiKey = process.env.GEMINI_API_KEY;
 
     // Fallback to deterministic file-tree analyzer if API key is not configured
@@ -44,48 +51,59 @@ export async function POST(req: Request) {
       return NextResponse.json(fallbackGraph);
     }
 
-    const prompt = `
-      You are an expert Software Architect analyzing the repository: ${repoUrl}.
-      Map the complete codebase architecture as a React Flow JSON graph.
-      
-      You must group related files into logical clusters (e.g., "YOLO Inference", "Navigation", "Frontend UI").
-      
-      NODES ARRAY:
-      1. Create a "group" node for every logical cluster:
-         { "id": "group-inference", "type": "group", "data": { "label": "YOLO Inference" } }
-      
-      2. Create standard nodes for the actual files, and assign them to a group using 'parentNode', plus semantic 'category' metadata ("ci", "database", "frontend", "api", "service", "ui", "config", "security", "testing", "source", "pipeline", "artifact", or "deployment"):
-         { 
-           "id": "file-worker-ts", 
-           "type": "custom", 
-           "parentNode": "group-inference", 
-           "data": { "label": "worker.ts (Inference worker)", "category": "service" } 
-         }
-      
-      EDGES ARRAY:
-      Map the functional data flow between the custom file nodes across groups (e.g., Viewport.tsx -> torch.ts).
-      IMPORTANT:
-      - Every edge's "source" and "target" MUST reference "custom" file node IDs (NEVER reference "group" container IDs).
-      - Connect every logical group into one unified architecture graph so no container is left isolated without paths to/from other containers.
-      {
-        "id": "e-sourceId-targetId",
-        "source": "source-node-id",
-        "target": "target-node-id",
-        "type": "smoothstep",
-        "animated": true,
-        "className": "electric-edge"
-      }
-      
-      Files to analyze:
-      ${JSON.stringify(sampledFiles)}
-    `;
+    const prompt = `You are an Expert Software Architect. Your task is to analyze the provided GitHub repository file tree and generate a React Flow JSON graph that maps the ACTUAL FUNCTIONAL EXECUTION FLOW of the application.
 
+CRITICAL RULES:
+1. IGNORE ALL BOILERPLATE: Completely ignore files like .gitignore, package.json, tsconfig.json, ESLint configs, and READMEs. Do not map them.
+2. MAP THE DATA FLOW: Trace how data moves through the app. Start from the User/Entry Point -> Frontend UI -> Backend/Services -> Database/Hardware. (e.g., Viewport -> Camera -> Inference Model -> Database).
+3. USE FUNCTIONAL GROUPS: Group related files into logical clusters using 'parentNode'. Examples: "User Interface", "YOLO Inference", "Data Persistence", "Hardware Bridge".
+4. DESCRIPTIVE EDGES: Every edge MUST have a 'label' property explaining the action (e.g., "renders", "fetches weights", "saves routes", "streams video").
+5. COLOR CODING: Assign semantic colors to nodes via 'data.color':
+   - Frontend/UI: "#3b82f6" (Blue)
+   - Backend/API: "#10b981" (Green)
+   - AI/Models/Logic: "#eab308" (Yellow)
+   - Database/Storage: "#8b5cf6" (Purple)
+
+JSON OUTPUT FORMAT:
+Return strictly valid JSON with no markdown formatting.
+{
+  "nodes": [
+    { 
+      "id": "group-inference", 
+      "type": "group", 
+      "data": { "label": "YOLO Inference Engine" } 
+    },
+    { 
+      "id": "file-worker-ts", 
+      "type": "custom", 
+      "parentNode": "group-inference",
+      "data": { "label": "worker.ts (Inference Thread)", "color": "#eab308" } 
+    }
+  ],
+  "edges": [
+    { 
+      "id": "e-viewport-worker", 
+      "source": "file-viewport-tsx", 
+      "target": "file-worker-ts", 
+      "type": "smoothstep", 
+      "animated": true,
+      "label": "streams frames",
+      "className": "electric-edge" 
+    }
+  ]
+}
+
+Repository files to analyze (${repoUrl}):
+${JSON.stringify(sampledFiles)}`;
+
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
     try {
-      const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("Gemini generation timed out")), 12000)
-      );
-      const response = await Promise.race([
-        ai.models.generateContent({
+      const timeoutPromise = new Promise<{ timedOut: true }>((resolve) => {
+        timeoutId = setTimeout(() => resolve({ timedOut: true }), 45000);
+      });
+
+      const generatePromise = ai.models
+        .generateContent({
           model: "gemini-4-hydrogen",
           contents: prompt,
           config: {
@@ -116,6 +134,7 @@ export async function POST(req: Request) {
                           label: { type: Type.STRING },
                           sublabel: { type: Type.STRING },
                           category: { type: Type.STRING },
+                          color: { type: Type.STRING },
                           latencyMs: { type: Type.NUMBER },
                         },
                         required: ["label"],
@@ -134,27 +153,44 @@ export async function POST(req: Request) {
                       target: { type: Type.STRING },
                       type: { type: Type.STRING },
                       animated: { type: Type.BOOLEAN },
+                      label: { type: Type.STRING },
                       className: { type: Type.STRING },
                     },
-                    required: ["id", "source", "target"],
+                    required: ["id", "source", "target", "label"],
                   },
                 },
               },
               required: ["nodes", "edges"],
             },
           },
-        }),
-        timeoutPromise,
-      ]);
+        })
+        .then((response) => ({ timedOut: false as const, response }));
 
-      const responseText = (response.text ?? "").trim();
+      const raceResult = await Promise.race([generatePromise, timeoutPromise]);
+      if (timeoutId !== undefined) {
+        clearTimeout(timeoutId);
+      }
+
+      if (raceResult.timedOut) {
+        console.info(
+          "[api/generate] Gemini request exceeded 45s budget; returning deterministic file-tree architecture."
+        );
+        const fallbackGraph = deriveArchitectureFromFiles(sampledFiles, owner, repo);
+        return NextResponse.json(fallbackGraph);
+      }
+
+      const responseText = (raceResult.response.text ?? "").trim();
       const parsedJson = JSON.parse(responseText);
       const graphData = normalizeGeneratedGraph(parsedJson);
       return NextResponse.json(graphData);
     } catch (geminiErr: unknown) {
-      console.warn(
-        "Gemini API call failed, falling back to deterministic file tree analysis:",
-        geminiErr
+      if (timeoutId !== undefined) {
+        clearTimeout(timeoutId);
+      }
+      const reason =
+        geminiErr instanceof Error ? geminiErr.message : "Unknown error";
+      console.info(
+        `[api/generate] Falling back to deterministic file tree analysis: ${reason}`
       );
       const fallbackGraph = deriveArchitectureFromFiles(sampledFiles, owner, repo);
       return NextResponse.json(fallbackGraph);
