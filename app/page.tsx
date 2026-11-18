@@ -33,6 +33,7 @@ import {
   Check,
   Github,
   Search,
+  Star,
 } from "lucide-react";
 import CustomNode from "@/components/CustomNode";
 import GroupNode from "@/components/GroupNode";
@@ -826,9 +827,13 @@ export default function RepoFlowApp() {
               rel="noopener noreferrer"
               aria-label="View Git-Flow on GitHub"
               title="GitHub: akash-xcoder/Git-Flow"
-              className="inline-flex items-center justify-center h-[calc(28*var(--u))] px-[calc(11.5*var(--u))] rounded-[calc(14*var(--u))] bg-[var(--panel)] text-[#e8e8e8] hover:bg-[#232323] hover:text-white text-[calc(11.5*var(--u))] font-medium tracking-[calc(-0.15*var(--u))] gap-[calc(6*var(--u))] transition-colors duration-180 no-underline cursor-pointer"
+              className="inline-flex items-center justify-center gap-2 h-[calc(28*var(--u))] px-[calc(11.5*var(--u))] rounded-[calc(14*var(--u))] bg-[var(--panel)] text-[#e8e8e8] hover:bg-[#232323] hover:text-white text-[calc(11.5*var(--u))] font-medium tracking-[calc(-0.15*var(--u))] transition-colors duration-180 no-underline cursor-pointer"
             >
               <Github className="w-[calc(13*var(--u))] h-[calc(13*var(--u))] shrink-0" />
+              <Star
+                aria-hidden="true"
+                className="w-[calc(12*var(--u))] h-[calc(12*var(--u))] text-yellow-400 fill-current shrink-0"
+              />
               <span>GitHub</span>
             </a>
 
